@@ -14,9 +14,11 @@ That approach is repetitive, easy to get wrong, and hard to maintain in larger c
 
 `Imlinka` removes that manual work by adding method/assembly-level tracing without changing service implementations.
 
-- Add method-level tracing automatically, without hand-written `Activity` wrappers.
-- Use attributes (`[Traced]`, `[Trace]`) or enable tracing for all public methods.
-- Apply tracing to services that are already registered in DI across an entire assembly.
+Trace without using the explicit 'Activity':
+![trace-before](./.github/images/trace-before.png)
+
+Trace with Imlinka's automatic method-level spans:
+![trace-after](./.github/images/trace-after.png)
 
 ## Installation
 

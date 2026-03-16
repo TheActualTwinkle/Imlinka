@@ -1,0 +1,6 @@
+@ImlinkaSampleWeb_HostAddress = http://localhost:5205
+
+GET {{ImlinkaSampleWeb_HostAddress}}/api/demo
+Accept: application/json
+
+###

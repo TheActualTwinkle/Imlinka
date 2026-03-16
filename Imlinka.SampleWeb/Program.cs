@@ -24,12 +24,12 @@ builder.Services.AddScoped<IWorker, Worker>();
 builder.Services.AddScoped<IJumper, Jumper>();
 builder.Services.AddScoped<ITester, Tester>();
 
-builder.Services.AddProjectTracingForAssembly(
-    typeof(IWorker).Assembly,
-    options => options
-        .WithPublicMethodsTracing()
-        .WithActivitySource(Telemetry.ActivitySource)
-        .IgnoreDefaultNamespaces());
+// builder.Services.AddProjectTracingForAssembly(
+//     typeof(IWorker).Assembly,
+//     options => options
+//         .WithPublicMethodsTracing()
+//         .WithActivitySource(Telemetry.ActivitySource)
+//         .IgnoreDefaultNamespaces());
 
 var app = builder.Build();
 
