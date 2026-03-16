@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/.Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="Imlinka.Benchmarks/Imlinka.Benchmarks.csproj" />
+  <Project Path="Imlinka.SampleWeb/Imlinka.SampleWeb.csproj" />
+  <Project Path="Imlinka/Imlinka.csproj" />
+</Solution>
