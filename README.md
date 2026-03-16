@@ -74,12 +74,12 @@ builder.Services.AddScoped<ITester, Tester>();
 builder.Services.AddProjectTracingForAssembly(
     typeof(IWorker).Assembly,
     options => options
-        .WithPublicMethodsTracing()
-        // .WithActivitySource(Telemetry.ActivitySource) // Optional
+        .WithPublicMethodsTracing()  // Automatically trace ALL public methods.
+        .WithActivitySource(Telemetry.ActivitySource)
         .IgnoreDefaultNamespaces());
 ```
 
-If `WithActivitySource(...)` is not specified, Imlinka uses a default `ActivitySource` based on the implementation assembly name.
+If `.WithPublicMethodsTracing()` used, all public methods of registered classes will be traced, even without `[Traced]` or `[Trace]` attributes.
 
 ## Benchmarks
 
