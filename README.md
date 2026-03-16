@@ -28,7 +28,7 @@ dotnet add package Imlinka
 
 ## Attribute-Based Tracing
 
-Use `[Traced]` to trace all methods (public by default; private methods can also be enabled via options).
+Use `[Traced]` to trace all public methods of the interface or class.
 
 ```csharp
 using Imlinka;
