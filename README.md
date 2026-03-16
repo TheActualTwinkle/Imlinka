@@ -91,7 +91,7 @@ If `WithActivitySource(...)` is not specified, Imlinka uses a default `ActivityS
 
 ## Sample Project
 
-See `Imlinka.SampleWeb` for a complete ASP.NET example.
+See [Imlinka.SampleWeb](./Imlinka.SampleWeb) for a complete ASP.NET example.
 
 ## License
 
