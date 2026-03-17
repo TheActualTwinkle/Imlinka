@@ -1,8 +1,7 @@
 ﻿{
   "Serilog": {
     "Using": [
-      "Serilog.Sinks.Console",
-      "Serilog.Sinks.File"
+      "Serilog.Sinks.Console"
     ],
     "MinimumLevel": {
       "Default": "Information",
@@ -16,22 +15,13 @@
       "FromLogContext"
     ],
     "Properties": {
-      "Application": "WebApplication1"
+      "Application": "Imlinka"
     },
     "WriteTo": [
       {
         "Name": "Console",
         "Args": {
           "outputTemplate": "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj} {Properties:j}{NewLine}{Exception}"
-        }
-      },
-      {
-        "Name": "File",
-        "Args": {
-          "path": "D:\\lol.log",
-          "shared": true,
-          "rollingInterval": "Day",
-          "outputTemplate": "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {SourceContext} {Message:lj} {Properties:j}{NewLine}{Exception}"
         }
       }
     ]
