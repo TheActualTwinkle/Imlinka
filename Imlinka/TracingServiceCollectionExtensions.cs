@@ -29,7 +29,7 @@ public static class TracingServiceCollectionExtensions
         /// </param>
         /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="services"/> or <paramref name="configure"/> is <c>null</c>.
+        /// Thrown when <paramref name="configure"/> is <c>null</c>.
         /// </exception>
         public IServiceCollection AddProjectTracing(Action<TracingRegistrationOptions> configure)
         {
@@ -48,7 +48,7 @@ public static class TracingServiceCollectionExtensions
         /// </param>
         /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="services"/>, <paramref name="assembly"/>, or <paramref name="configure"/> is <c>null</c>.
+        /// Thrown when <paramref name="assembly"/>, or <paramref name="configure"/> is <c>null</c>.
         /// </exception>
         public IServiceCollection AddProjectTracingForAssembly(
             Assembly assembly,
@@ -70,7 +70,7 @@ public static class TracingServiceCollectionExtensions
         /// </param>
         /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="services"/>, <paramref name="assemblies"/>, or <paramref name="configure"/> is <c>null</c>.
+        /// Thrown when <paramref name="assemblies"/>, or <paramref name="configure"/> is <c>null</c>.
         /// </exception>
         public IServiceCollection AddProjectTracingForAssemblies(
             IEnumerable<Assembly> assemblies,
