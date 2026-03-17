@@ -71,11 +71,19 @@ builder.Services.AddScoped<IWorker, Worker>();
 builder.Services.AddScoped<IJumper, Jumper>();
 builder.Services.AddScoped<ITester, Tester>();
 
+builder.Services.AddProjectTracing(options => 
+    options
+        .WithPublicMethodsTracing()
+        .WithActivitySource(<Some ActivitySource>)
+        .IgnoreDefaultNamespaces());
+
+- or -
+    
 builder.Services.AddProjectTracingForAssembly(
     typeof(IWorker).Assembly,
     options => options
-        .WithPublicMethodsTracing()  // Automatically trace ALL public methods.
-        .WithActivitySource(Telemetry.ActivitySource)
+        .WithPublicMethodsTracing()
+        .WithActivitySource(<Some ActivitySource>)
         .IgnoreDefaultNamespaces());
 ```
 
