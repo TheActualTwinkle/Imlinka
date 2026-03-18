@@ -32,6 +32,18 @@ dotnet build -c Release --no-restore
 # Pack all projects
 dotnet pack -c Release Imlinka/Imlinka.csproj --output nupkg
 
-dotnet nuget push nupkg/Imlinka.$VERSION.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+PACKAGE_PATH="nupkg/Imlinka.$VERSION.nupkg"
+NUGET_SOURCE="https://api.nuget.org/v3/index.json"
+
+echo "Will run:"
+echo "dotnet nuget push \"$PACKAGE_PATH\" --api-key ***hidden*** --source \"$NUGET_SOURCE\""
+
+read -r -p "Continue? [Y/n]: " CONFIRM
+if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+  echo "Cancelled."
+  exit 0
+fi
+
+dotnet nuget push "$PACKAGE_PATH" --api-key "$NUGET_API_KEY" --source "$NUGET_SOURCE"
 
 echo "Done!"

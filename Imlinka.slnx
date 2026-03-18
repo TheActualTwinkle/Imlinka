@@ -12,5 +12,6 @@
   </Folder>
   <Project Path="Imlinka.Benchmarks/Imlinka.Benchmarks.csproj" />
   <Project Path="Imlinka.SampleWeb/Imlinka.SampleWeb.csproj" />
+  <Project Path="Imlinka.Tests/Imlinka.Tests.csproj" />
   <Project Path="Imlinka/Imlinka.csproj" />
 </Solution>
