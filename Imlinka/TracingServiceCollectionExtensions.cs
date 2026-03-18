@@ -118,10 +118,51 @@ public static class TracingServiceCollectionExtensions
             .Select(sd => new RegisteredCandidate(sd, sd.ServiceType, sd.ImplementationType!))
             .Where(c => c.ServiceType is { IsInterface: true, IsGenericTypeDefinition: false })
             .Where(c => c.ImplementationType is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
+            .Where(c => IsDispatchProxyCompatible(c.ServiceType))
             .Where(c => IsProjectType(c.ServiceType, options) && IsProjectType(c.ImplementationType, options))
             .Where(c => assemblies is null || assemblies.Contains(c.ServiceType.Assembly) || assemblies.Contains(c.ImplementationType.Assembly))
             .Where(c => options.TraceAllPublicMethods || IsMarkedForTracing(c.ServiceType, c.ImplementationType))
             .ToList();
+
+    private static bool IsDispatchProxyCompatible(Type interfaceType) =>
+        interfaceType
+            .GetMethods()
+            .All(IsDispatchProxyCompatibleMethod);
+
+    private static bool IsDispatchProxyCompatibleMethod(MethodInfo method)
+    {
+        if (ContainsByRefLikeType(method.ReturnType))
+            return false;
+
+        return method
+            .GetParameters()
+            .All(parameter => !ContainsByRefLikeType(parameter.ParameterType));
+    }
+
+    private static bool ContainsByRefLikeType(Type type)
+    {
+        while (true)
+        {
+            if (type.IsByRef || type.IsPointer)
+                type = type.GetElementType() ?? type;
+
+            if (type.IsByRefLike)
+                return true;
+
+            if (type.IsArray)
+            {
+                type = type.GetElementType()!;
+
+                continue;
+            }
+
+            if (!type.IsGenericType)
+                return false;
+
+            return type.GetGenericArguments()
+                .Any(ContainsByRefLikeType);
+        }
+    }
 
     private static bool IsMarkedForTracing(Type interfaceType, Type implementationType)
     {
