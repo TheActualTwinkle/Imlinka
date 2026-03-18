@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Imlinka.Tests.TestModels;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -7,7 +8,7 @@ namespace Imlinka.Tests;
 /// <summary>
 /// Tests for tracing registrations that rely on DispatchProxy and interface shape filtering.
 /// </summary>
-public sealed class TracingServiceCollectionExtensionsTests
+public sealed class TracingServiceCollectionRegistrationTests
 {
     /// <summary>
     /// AddProjectTracingForAssembly when interface is DispatchProxy-compatible should return a proxied service instance.
@@ -243,6 +244,7 @@ public sealed class TracingServiceCollectionExtensionsTests
         service.Should().NotBeOfType<TracedCompatibleWorker>();
         service.Calculate().Should().Be(100);
     }
+
 }
 
 

@@ -1,4 +1,4 @@
-namespace Imlinka.Tests;
+namespace Imlinka.Tests.TestModels;
 
 internal interface ICompatibleWorker
 {
@@ -120,4 +120,29 @@ internal sealed class TracedCompatibleWorker : ITracedCompatibleWorker
 {
     public int Calculate() => 100;
 }
+
+internal interface IEventArchive
+{
+    Task<int> PullChunkAsync(int cursor, int limit);
+}
+
+internal sealed class EventArchive : IEventArchive
+{
+    public async Task<int> PullChunkAsync(int cursor, int limit)
+    {
+        await Task.Delay(20);
+        return cursor + limit;
+    }
+}
+
+internal interface IRecordCatalog
+{
+    int ReadPage(int pageNumber, int pageSize);
+}
+
+internal sealed class RecordCatalog : IRecordCatalog
+{
+    public int ReadPage(int pageNumber, int pageSize) => pageNumber + pageSize;
+}
+
 
