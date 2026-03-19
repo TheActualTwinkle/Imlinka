@@ -1,4 +1,3 @@
-using System.Reflection;
 using FluentAssertions;
 using Imlinka.Tests.TestModels;
 using Microsoft.Extensions.DependencyInjection;
