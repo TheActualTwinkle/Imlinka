@@ -348,6 +348,54 @@ public static class TracingServiceCollectionExtensions
         object? serviceKey,
         object? implementationServiceKey)
     {
+        // Only when KeepOriginalService() is enabled for UNKEYED services we pass an Unkeyed,
+        // and only then we can safely resolve through the kept concrete registration.
+        // For keyed services without KeepOriginalService(), implementationServiceKey equals the key and
+        // there is NO kept concrete registration to resolve.
+        if (implementationServiceKey is Unkeyed)
+        {
+            var inferred = candidate.ImplementationType ?? TryInferImplementationType(candidate.ServiceType);
+            if (inferred is not null)
+                return serviceProvider.GetRequiredService(inferred);
+        }
+
+        // KeepOriginalService() for keyed services keeps the concrete keyed registration under the same key.
+        // For factory/instance registrations, candidate.ImplementationType is null, so we must resolve via the inferred type.
+        // Important: we must NOT do this when KeepOriginalService() is disabled (there is no kept concrete registration).
+        if (candidate.IsKeyedService
+            && implementationServiceKey is not null
+            && implementationServiceKey is not Unkeyed
+            && candidate.ImplementationType is null
+            && (candidate.KeyedImplementationFactory is not null || candidate.ImplementationInstance is not null)
+            && TryInferImplementationType(candidate.ServiceType) is { } inferredKeyedImpl)
+        {
+            // This path is only valid when KeepOriginalService() was enabled, because that's the only time we add
+            // a keyed concrete registration for factory/instance descriptors.
+            // When KeepOriginalService() is disabled, the following resolution would throw, so we fall back to invoking the factory.
+            try
+            {
+                return serviceProvider.GetRequiredKeyedService(inferredKeyedImpl, implementationServiceKey);
+            }
+            catch (InvalidOperationException)
+            {
+                // Fall through to original factory/instance resolution.
+            }
+        }
+
+        // KeepOriginalService() for keyed services with a known implementation type.
+        // However, without KeepOriginalService(), implementationServiceKey is also non-null (it's just the key)
+        // and we must NOT try to resolve a concrete keyed implementation type that was never registered.
+        if (candidate.IsKeyedService
+            && implementationServiceKey is not null
+            && implementationServiceKey is not Unkeyed
+            && candidate.ImplementationType is not null
+            && candidate.Descriptor.IsKeyedService
+            && candidate.Descriptor.KeyedImplementationType is not null)
+        {
+            // Only safe when the original descriptor had a known keyed implementation type.
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, implementationServiceKey);
+        }
+
         if (candidate.ImplementationType is not null)
         {
             if (implementationServiceKey is null)
@@ -360,7 +408,7 @@ public static class TracingServiceCollectionExtensions
         }
 
         if (candidate.IsKeyedService && candidate.KeyedImplementationFactory is not null)
-            return candidate.KeyedImplementationFactory(serviceProvider, serviceKey);
+            return candidate.KeyedImplementationFactory(serviceProvider, implementationServiceKey ?? serviceKey);
 
         if (!candidate.IsKeyedService && candidate.ImplementationFactory is not null)
             return candidate.ImplementationFactory(serviceProvider);
