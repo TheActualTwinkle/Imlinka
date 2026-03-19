@@ -31,5 +31,3 @@ internal sealed class ActivityCollector : IDisposable
     private static ActivitySamplingResult SampleUsingParentIdActivity(ref ActivityCreationOptions<string> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
 }
-
-

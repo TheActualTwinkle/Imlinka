@@ -102,7 +102,8 @@ public static class TracingServiceCollectionExtensions
                     services,
                     candidate,
                     options.TraceAllPublicMethods,
-                    options.ActivitySource);
+                    options.ActivitySource,
+                    options.KeepOriginalImplementation);
             }
 
             return services;
@@ -114,15 +115,61 @@ public static class TracingServiceCollectionExtensions
         TracingRegistrationOptions options,
         IReadOnlyCollection<Assembly>? assemblies) =>
         services
-            .Where(sd => sd.ImplementationType is not null)
-            .Select(sd => new RegisteredCandidate(sd, sd.ServiceType, sd.ImplementationType!))
+            .Select(CreateRegisteredCandidate)
+            .Where(c => c is not null)
+            .Select(c => c!)
             .Where(c => c.ServiceType is { IsInterface: true, IsGenericTypeDefinition: false })
-            .Where(c => c.ImplementationType is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
+            .Where(c => c.ImplementationType is null || c.ImplementationType is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
             .Where(c => IsDispatchProxyCompatible(c.ServiceType))
-            .Where(c => IsProjectType(c.ServiceType, options) && IsProjectType(c.ImplementationType, options))
-            .Where(c => assemblies is null || assemblies.Contains(c.ServiceType.Assembly) || assemblies.Contains(c.ImplementationType.Assembly))
+            .Where(c => IsProjectType(c.ServiceType, options))
+            .Where(c => c.ImplementationType is null || IsProjectType(c.ImplementationType, options))
+            .Where(c => assemblies is null || assemblies.Contains(c.ServiceType.Assembly) || (c.ImplementationType is not null && assemblies.Contains(c.ImplementationType.Assembly)))
             .Where(c => options.TraceAllPublicMethods || IsMarkedForTracing(c.ServiceType, c.ImplementationType))
             .ToList();
+
+    private static RegisteredCandidate? CreateRegisteredCandidate(ServiceDescriptor descriptor)
+    {
+        if (!TryGetImplementation(descriptor, out var implementationType, out var implementationFactory, out var keyedImplementationFactory, out var implementationInstance))
+            return null;
+
+        return new RegisteredCandidate(
+            descriptor,
+            descriptor.ServiceType,
+            implementationType,
+            descriptor.ServiceKey,
+            descriptor.Lifetime,
+            implementationFactory,
+            keyedImplementationFactory,
+            implementationInstance);
+    }
+
+    private static bool TryGetImplementation(
+        ServiceDescriptor descriptor,
+        out Type? implementationType,
+        out Func<IServiceProvider, object>? implementationFactory,
+        out Func<IServiceProvider, object?, object>? keyedImplementationFactory,
+        out object? implementationInstance)
+    {
+        implementationType = null;
+        implementationFactory = null;
+        keyedImplementationFactory = null;
+        implementationInstance = null;
+
+        if (descriptor.IsKeyedService)
+        {
+            implementationType = descriptor.KeyedImplementationType;
+            keyedImplementationFactory = descriptor.KeyedImplementationFactory;
+            implementationInstance = descriptor.KeyedImplementationInstance;
+
+            return implementationType is not null || keyedImplementationFactory is not null || implementationInstance is not null;
+        }
+
+        implementationType = descriptor.ImplementationType;
+        implementationFactory = descriptor.ImplementationFactory;
+        implementationInstance = descriptor.ImplementationInstance;
+
+        return implementationType is not null || implementationFactory is not null || implementationInstance is not null;
+    }
 
     private static bool IsDispatchProxyCompatible(Type interfaceType) =>
         interfaceType
@@ -164,39 +211,122 @@ public static class TracingServiceCollectionExtensions
         }
     }
 
-    private static bool IsMarkedForTracing(Type interfaceType, Type implementationType)
+    private static bool IsMarkedForTracing(Type interfaceType, Type? implementationType)
     {
-        if (interfaceType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
+        if (IsInterfaceMarkedForTracing(interfaceType))
             return true;
+
+        if (implementationType is null)
+            return false;
 
         if (implementationType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
-            return true;
-
-        if (interfaceType.GetMethods().Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null))
             return true;
 
         return implementationType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null);
     }
 
+    private static bool IsInterfaceMarkedForTracing(Type interfaceType)
+    {
+        if (interfaceType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
+            return true;
+
+        return interfaceType.GetMethods().Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null);
+    }
+
     private static void RegisterTraced(
         IServiceCollection services,
         RegisteredCandidate candidate,
         bool traceAllPublicMethods,
-        ActivitySource? activitySource)
+        ActivitySource? activitySource,
+        bool keepOriginalImplementation)
     {
         services.Remove(candidate.Descriptor);
 
-        services.TryAdd(ServiceDescriptor.Describe(
-            candidate.ImplementationType,
-            candidate.ImplementationType,
-            candidate.Descriptor.Lifetime));
+        object? implementationServiceKey;
 
-        services.Add(ServiceDescriptor.Describe(candidate.ServiceType, sp =>
+        if (candidate.ImplementationType is null || !keepOriginalImplementation && !candidate.IsKeyedService)
+            implementationServiceKey = null;
+        
+        else implementationServiceKey = ResolveImplementationServiceKey(candidate, keepOriginalImplementation);
+
+        if (candidate.ImplementationType is not null && implementationServiceKey is not null)
         {
-            var implementation = sp.GetRequiredService(candidate.ImplementationType);
+            var descriptor = CreateImplementationDescriptor(candidate.ImplementationType, candidate.Lifetime, implementationServiceKey);
+
+            if (keepOriginalImplementation)
+                services.TryAdd(descriptor);
+            else
+                services.Add(descriptor);
+        }
+
+        services.Add(CreateDescriptor(candidate.ServiceType, candidate, (sp, serviceKey) =>
+        {
+            var implementation = ResolveImplementation(sp, candidate, serviceKey, implementationServiceKey);
             return CreateProxy(candidate.ServiceType, implementation, traceAllPublicMethods, activitySource);
-        }, candidate.Descriptor.Lifetime));
+        }));
+    }
+
+    private static object? ResolveImplementationServiceKey(RegisteredCandidate candidate, bool keepOriginalImplementation)
+    {
+        if (keepOriginalImplementation)
+            return candidate.IsKeyedService ? candidate.ServiceKey : UnkeyedServiceSentinel.Value;
+
+        return candidate.ServiceKey;
+    }
+
+    private static object ResolveImplementation(
+        IServiceProvider serviceProvider,
+        RegisteredCandidate candidate,
+        object? serviceKey,
+        object? implementationServiceKey)
+    {
+        if (candidate.ImplementationType is not null)
+        {
+            if (implementationServiceKey is null)
+                return ActivatorUtilities.CreateInstance(serviceProvider, candidate.ImplementationType);
+
+            if (implementationServiceKey is UnkeyedServiceSentinel)
+                return serviceProvider.GetRequiredService(candidate.ImplementationType);
+
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, implementationServiceKey);
+        }
+
+        if (candidate.IsKeyedService && candidate.KeyedImplementationFactory is not null)
+            return candidate.KeyedImplementationFactory(serviceProvider, serviceKey);
+
+        if (!candidate.IsKeyedService && candidate.ImplementationFactory is not null)
+            return candidate.ImplementationFactory(serviceProvider);
+
+        if (candidate.ImplementationInstance is not null)
+            return candidate.ImplementationInstance;
+
+        throw new InvalidOperationException($"Cannot resolve implementation for service '{candidate.ServiceType}'.");
+    }
+
+    private static ServiceDescriptor CreateImplementationDescriptor(
+        Type implementationType,
+        ServiceLifetime lifetime,
+        object? serviceKey)
+    {
+        return serviceKey is UnkeyedServiceSentinel
+            ? ServiceDescriptor.Describe(implementationType, implementationType, lifetime)
+            : ServiceDescriptor.DescribeKeyed(implementationType, serviceKey, implementationType, lifetime);
+    }
+
+    private static ServiceDescriptor CreateDescriptor(
+        Type serviceType,
+        RegisteredCandidate candidate,
+        Func<IServiceProvider, object?, object>? keyedFactory = null)
+    {
+        if (!candidate.IsKeyedService)
+            return keyedFactory is null
+                ? ServiceDescriptor.Describe(serviceType, serviceType, candidate.Lifetime)
+                : ServiceDescriptor.Describe(serviceType, sp => keyedFactory(sp, null), candidate.Lifetime);
+
+        return keyedFactory is null
+            ? ServiceDescriptor.DescribeKeyed(serviceType, candidate.ServiceKey, serviceType, candidate.Lifetime)
+            : ServiceDescriptor.DescribeKeyed(serviceType, candidate.ServiceKey, keyedFactory, candidate.Lifetime);
     }
 
     private static object CreateProxy(
@@ -222,7 +352,7 @@ public static class TracingServiceCollectionExtensions
         bool traceAllPublicMethods,
         ActivitySource? activitySource)
         where TInterface : class
-    {
+        {
         var proxy = DispatchProxy.Create<TInterface, TracingDispatchProxy<TInterface>>();
         ((TracingDispatchProxy<TInterface>)(object)proxy)
             .SetParameters((TInterface)implementation, traceAllPublicMethods, activitySource);
@@ -233,7 +363,13 @@ public static class TracingServiceCollectionExtensions
     {
         var ns = type.Namespace;
         if (string.IsNullOrWhiteSpace(ns))
-            return true;
+            return options.ProxiedNamespacePrefixes.Count == 0;
+
+        var isIncluded = options.ProxiedNamespacePrefixes.Count == 0
+            || options.ProxiedNamespacePrefixes.Any(prefix => ns.StartsWith(prefix, StringComparison.Ordinal));
+
+        if (!isIncluded)
+            return false;
 
         return !options.IgnoredNamespacePrefixes.Any(prefix => ns.StartsWith(prefix, StringComparison.Ordinal));
     }
@@ -241,5 +377,21 @@ public static class TracingServiceCollectionExtensions
     private sealed record RegisteredCandidate(
         ServiceDescriptor Descriptor,
         Type ServiceType,
-        Type ImplementationType);
+        Type? ImplementationType,
+        object? ServiceKey,
+        ServiceLifetime Lifetime,
+        Func<IServiceProvider, object>? ImplementationFactory,
+        Func<IServiceProvider, object?, object>? KeyedImplementationFactory,
+        object? ImplementationInstance)
+    {
+        public bool IsKeyedService => ServiceKey is not null || Descriptor.IsKeyedService;
+    }
+
+    private sealed class UnkeyedServiceSentinel
+    {
+        public static readonly UnkeyedServiceSentinel Value = new();
+        private UnkeyedServiceSentinel()
+        {
+        }
+    }
 }

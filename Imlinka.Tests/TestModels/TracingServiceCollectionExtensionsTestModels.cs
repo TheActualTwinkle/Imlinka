@@ -145,4 +145,32 @@ internal sealed class RecordCatalog : IRecordCatalog
     public int ReadPage(int pageNumber, int pageSize) => pageNumber + pageSize;
 }
 
+internal interface IFactoryJumper
+{
+    string Jump();
+}
 
+internal sealed class FactoryJumper(string suffix) : IFactoryJumper
+{
+    public string Jump() => $"jump-{suffix}";
+}
+
+internal interface IKeyedWorker
+{
+    int Calculate();
+}
+
+internal sealed class KeyedWorker : IKeyedWorker
+{
+    public int Calculate() => 64;
+}
+
+internal interface IKeyedFactoryWorker
+{
+    string Name();
+}
+
+internal sealed class KeyedFactoryWorker(string name) : IKeyedFactoryWorker
+{
+    public string Name() => name;
+}

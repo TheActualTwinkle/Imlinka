@@ -14,7 +14,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when interface is DispatchProxy-compatible should return a proxied service instance.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_CompatibleInterface_ReturnsProxyInstance()
+    public void AddProjectTracingForAssembly_WhenInterfaceIsCompatible_ShouldReturnProxyInstance()
     {
         var services = new ServiceCollection();
         services.AddTransient<ICompatibleWorker, CompatibleWorker>();
@@ -36,7 +36,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when interface has ReadOnlySpan parameter should keep original implementation without proxy.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_ReadOnlySpanParameter_ReturnsOriginalImplementation()
+    public void AddProjectTracingForAssembly_WhenInterfaceHasReadOnlySpanParameter_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<ISpanDeserializer, SpanDeserializer>();
@@ -58,7 +58,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when interface has byref-like return should keep original implementation without proxy.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_ByRefLikeReturnType_ReturnsOriginalImplementation()
+    public void AddProjectTracingForAssembly_WhenInterfaceHasByRefLikeReturnType_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<ISpanSource, SpanSource>();
@@ -79,7 +79,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when interface mixes safe and byref-like methods should skip proxy for entire interface.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_MixedInterfaceWithSpanMethod_ReturnsOriginalImplementation()
+    public void AddProjectTracingForAssembly_WhenInterfaceContainsSpanMethod_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<IMixedSpanInterface, MixedSpanImplementation>();
@@ -100,7 +100,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracing when TraceAllPublicMethods is false and no attributes are present should keep original implementation.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_NoTracingAttributesAndTraceAllDisabled_ReturnsOriginalImplementation()
+    public void AddProjectTracing_WhenNoTracingAttributesAndTraceAllDisabled_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<IPlainWorker, PlainWorker>();
@@ -120,7 +120,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracing when TraceAllPublicMethods is enabled and interface has in ReadOnlySpan parameter should keep original implementation.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_InReadOnlySpanParameterWithTraceAllEnabled_ReturnsOriginalImplementation()
+    public void AddProjectTracing_WhenInterfaceHasInReadOnlySpanParameterAndTraceAllEnabled_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<IInSpanConsumer, InSpanConsumer>();
@@ -142,7 +142,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when unsupported and supported interfaces are both registered should proxy only supported service.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_MixedSupportedAndUnsupportedRegistrations_ProxiesOnlySupportedService()
+    public void AddProjectTracingForAssembly_WhenSupportedAndUnsupportedServicesAreRegistered_ShouldProxyOnlySupportedService()
     {
         var services = new ServiceCollection();
         services.AddTransient<ISpanDeserializer, SpanDeserializer>();
@@ -165,7 +165,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracingForAssembly when interface uses ReadOnlyMemory parameter should still proxy because type is not byref-like.
     /// </summary>
     [Fact]
-    public void AddProjectTracingForAssembly_ReadOnlyMemoryParameter_ReturnsProxyInstance()
+    public void AddProjectTracingForAssembly_WhenInterfaceHasReadOnlyMemoryParameter_ShouldReturnProxyInstance()
     {
         var services = new ServiceCollection();
         services.AddTransient<IMemoryConsumer, MemoryConsumer>();
@@ -187,7 +187,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracing when TraceAllPublicMethods is enabled for mixed interface with ReadOnlySpan should skip proxy for entire service.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_MixedInterfaceWithSpanAndTraceAllEnabled_ReturnsOriginalImplementation()
+    public void AddProjectTracing_WhenMixedInterfaceContainsSpanAndTraceAllEnabled_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<IMixedSpanInterface, MixedSpanImplementation>();
@@ -208,7 +208,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracing when mixed interface is marked with Traced should still skip proxy due ReadOnlySpan method incompatibility.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_TracedAttributeOnMixedInterface_ReturnsOriginalImplementation()
+    public void AddProjectTracing_WhenMixedInterfaceIsTracedButContainsSpanMethod_ShouldReturnOriginalImplementation()
     {
         var services = new ServiceCollection();
         services.AddTransient<ITracedMixedSpanInterface, TracedMixedSpanImplementation>();
@@ -228,7 +228,7 @@ public sealed class TracingServiceCollectionRegistrationTests
     /// AddProjectTracing when proxy-compatible interface is marked with Traced should return proxy instance.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_TracedAttributeOnCompatibleInterface_ReturnsProxyInstance()
+    public void AddProjectTracing_WhenCompatibleInterfaceIsTraced_ShouldReturnProxyInstance()
     {
         var services = new ServiceCollection();
         services.AddTransient<ITracedCompatibleWorker, TracedCompatibleWorker>();
@@ -245,6 +245,114 @@ public sealed class TracingServiceCollectionRegistrationTests
         service.Calculate().Should().Be(100);
     }
 
+    /// <summary>
+    /// AddProjectTracing when registration uses implementation factory should still return proxied interface instance.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenRegisteredViaImplementationFactory_ShouldReturnProxyInstance()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IFactoryJumper>(_ => new FactoryJumper("kek300"));
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var jumper = serviceProvider.GetRequiredService<IFactoryJumper>();
+
+        jumper.Should().NotBeNull();
+        jumper.Should().NotBeOfType<FactoryJumper>();
+        jumper.Jump().Should().Be("jump-kek300");
+    }
+
+    /// <summary>
+    /// AddProjectTracing when registration uses keyed implementation type should return keyed proxy instance.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenKeyedImplementationTypeIsRegistered_ShouldReturnProxyInstance()
+    {
+        var services = new ServiceCollection();
+        services.AddKeyedScoped<IKeyedWorker, KeyedWorker>("main");
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var worker = serviceProvider.GetRequiredKeyedService<IKeyedWorker>("main");
+
+        worker.Should().NotBeNull();
+        worker.Should().NotBeOfType<KeyedWorker>();
+        worker.Calculate().Should().Be(64);
+    }
+
+    /// <summary>
+    /// AddProjectTracing when registration uses keyed implementation factory should return keyed proxy instance.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenKeyedImplementationFactoryIsRegistered_ShouldReturnProxyInstance()
+    {
+        var services = new ServiceCollection();
+        services.AddKeyedScoped<IKeyedFactoryWorker>("dynamic", (_, key) => new KeyedFactoryWorker($"worker-{key}"));
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var worker = serviceProvider.GetRequiredKeyedService<IKeyedFactoryWorker>("dynamic");
+
+        worker.Should().NotBeNull();
+        worker.Should().NotBeOfType<KeyedFactoryWorker>();
+        worker.Name().Should().Be("worker-dynamic");
+    }
+
+    /// <summary>
+    /// AddProjectTracing without KeepOriginalService should not leave concrete implementation resolvable by type.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenKeepOriginalServiceIsNotEnabled_ShouldNotResolveConcreteImplementation()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<ICompatibleWorker, CompatibleWorker>();
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        serviceProvider.GetService<CompatibleWorker>().Should().BeNull();
+    }
+
+    /// <summary>
+    /// AddProjectTracing with KeepOriginalService should keep concrete implementation resolvable together with proxied interface.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenKeepOriginalServiceIsEnabled_ShouldResolveConcreteImplementationAndProxy()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<ICompatibleWorker, CompatibleWorker>();
+
+        services.AddProjectTracing(options =>
+        {
+            options
+                .WithPublicMethodsTracing()
+                .KeepOriginalService();
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var service = serviceProvider.GetRequiredService<ICompatibleWorker>();
+        var concrete = serviceProvider.GetRequiredService<CompatibleWorker>();
+
+        service.Should().NotBeOfType<CompatibleWorker>();
+        concrete.Should().BeOfType<CompatibleWorker>();
+        concrete.Calculate().Should().Be(42);
+    }
+
 }
-
-

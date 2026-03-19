@@ -13,4 +13,3 @@ public sealed class Tester(IJumper jumper) : ITester
         await Task.WhenAll(t1, t2, t3);
     }
 }
-

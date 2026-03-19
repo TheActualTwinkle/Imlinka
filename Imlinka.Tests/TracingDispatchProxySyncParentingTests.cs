@@ -16,7 +16,7 @@ public sealed class TracingDispatchProxySyncParentingTests
     /// Four sequential sync calls should stay sibling spans under the outer request activity.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_SequentialSyncCalls_ShouldKeepSameParentAcrossFourCalls()
+    public void AddProjectTracing_WhenSequentialSyncCallsExecuted_ShouldKeepSameParentAcrossFourCalls()
     {
         var tracedSource = new ActivitySource($"tests.imlinka.sync.{Guid.NewGuid():N}");
         var requestSource = new ActivitySource($"tests.request.sync.{Guid.NewGuid():N}");
@@ -54,6 +54,3 @@ public sealed class TracingDispatchProxySyncParentingTests
         spans.Should().OnlyContain(s => !spanIds.Contains(s.ParentSpanId));
     }
 }
-
-
-

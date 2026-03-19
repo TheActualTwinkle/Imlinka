@@ -16,7 +16,7 @@ public sealed class TracingDispatchProxyAsyncParentingTests
     /// Four sequential async calls should stay sibling spans under the outer request activity.
     /// </summary>
     [Fact]
-    public async Task AddProjectTracing_SequentialAsyncCalls_ShouldKeepSameParentAcrossFourCalls()
+    public async Task AddProjectTracing_WhenSequentialAsyncCallsExecuted_ShouldKeepSameParentAcrossFourCalls()
     {
         var tracedSource = new ActivitySource($"tests.imlinka.async.{Guid.NewGuid():N}");
         var requestSource = new ActivitySource($"tests.request.async.{Guid.NewGuid():N}");
@@ -57,7 +57,7 @@ public sealed class TracingDispatchProxyAsyncParentingTests
     /// Four parallel async calls should not be nested under each other.
     /// </summary>
     [Fact]
-    public async Task AddProjectTracing_ParallelAsyncCalls_ShouldNotNestAcrossFourCalls()
+    public async Task AddProjectTracing_WhenParallelAsyncCallsExecuted_ShouldNotNestAcrossFourCalls()
     {
         var tracedSource = new ActivitySource($"tests.imlinka.async.{Guid.NewGuid():N}");
         var requestSource = new ActivitySource($"tests.request.async.{Guid.NewGuid():N}");
@@ -96,6 +96,3 @@ public sealed class TracingDispatchProxyAsyncParentingTests
         spans.Should().OnlyContain(s => !spanIds.Contains(s.ParentSpanId));
     }
 }
-
-
-
