@@ -60,27 +60,6 @@ public sealed class TracingRegistrationOptions
     }
 
     /// <summary>
-    /// Adds namespace prefixes to proxy.
-    /// If configured, only services from these namespaces will be proxied.
-    /// </summary>
-    /// <param name="namespacePrefixes">Namespace prefixes to include into tracing candidates.</param>
-    /// <returns>The <see cref="TracingRegistrationOptions"/> instance.</returns>
-    public TracingRegistrationOptions WithProxiedNamespacePrefixes(params string[] namespacePrefixes)
-    {
-        ArgumentNullException.ThrowIfNull(namespacePrefixes);
-
-        foreach (var prefix in namespacePrefixes)
-        {
-            if (string.IsNullOrWhiteSpace(prefix))
-                continue;
-
-            ProxiedNamespacePrefixes.Add(prefix);
-        }
-
-        return this;
-    }
-
-    /// <summary>
     /// Adds a ActivitySource to be used for generated spans.
     /// If not set, spans will be created without a source, which may lead to missing spans.
     /// </summary>
@@ -92,6 +71,27 @@ public sealed class TracingRegistrationOptions
         
         ActivitySource = activitySource;
         
+        return this;
+    }
+
+    /// <summary>
+    /// Adds namespace prefixes to proxy.
+    /// If configured, only services from these namespaces will be proxied.
+    /// </summary>
+    /// <param name="namespacePrefixes">Namespace prefixes to include into tracing candidates.</param>
+    /// <returns>The <see cref="TracingRegistrationOptions"/> instance.</returns>
+    public TracingRegistrationOptions WithProxiedNamespacePrefixes(IEnumerable<string> namespacePrefixes)
+    {
+        ArgumentNullException.ThrowIfNull(namespacePrefixes);
+
+        foreach (var prefix in namespacePrefixes)
+        {
+            if (string.IsNullOrWhiteSpace(prefix))
+                continue;
+
+            ProxiedNamespacePrefixes.Add(prefix);
+        }
+
         return this;
     }
 

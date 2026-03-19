@@ -8,9 +8,9 @@ using Xunit;
 namespace Imlinka.Tests;
 
 /// <summary>
-/// Verifies parent-child relationships for async spans created by tracing proxy.
+/// Verifies parent-child relationships for async and sync spans created by tracing proxy.
 /// </summary>
-public sealed class TracingDispatchProxyAsyncParentingTests
+public sealed class ParentingTests
 {
     /// <summary>
     /// Four sequential async calls should stay sibling spans under the outer request activity.
@@ -18,6 +18,7 @@ public sealed class TracingDispatchProxyAsyncParentingTests
     [Fact]
     public async Task AddProjectTracing_WhenSequentialAsyncCallsExecuted_ShouldKeepSameParentAcrossFourCalls()
     {
+        // Arrange.
         var tracedSource = new ActivitySource($"tests.imlinka.async.{Guid.NewGuid():N}");
         var requestSource = new ActivitySource($"tests.request.async.{Guid.NewGuid():N}");
         using var collector = new ActivityCollector();
@@ -27,17 +28,18 @@ public sealed class TracingDispatchProxyAsyncParentingTests
 
         services.AddProjectTracing(options =>
         {
-            options.TraceAllPublicMethods = true;
+            options.WithPublicMethodsTracing();
             options.WithActivitySource(tracedSource);
         });
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         var archive = provider.GetRequiredService<IEventArchive>();
 
         using var request = requestSource.StartActivity();
         request.Should().NotBeNull();
         var requestSpanId = request.SpanId;
 
+        // Act.
         await archive.PullChunkAsync(10, 5);
         await archive.PullChunkAsync(20, 5);
         await archive.PullChunkAsync(30, 5);
@@ -47,6 +49,7 @@ public sealed class TracingDispatchProxyAsyncParentingTests
             .Where(a => a.Source.Name == tracedSource.Name && a.DisplayName == "EventArchive.PullChunkAsync")
             .ToList();
 
+        // Assert.
         spans.Should().HaveCount(4);
         spans.Should().OnlyContain(s => s.ParentSpanId == requestSpanId);
         var spanIds = spans.Select(s => s.SpanId).ToHashSet();
@@ -59,6 +62,7 @@ public sealed class TracingDispatchProxyAsyncParentingTests
     [Fact]
     public async Task AddProjectTracing_WhenParallelAsyncCallsExecuted_ShouldNotNestAcrossFourCalls()
     {
+        // Arrange.
         var tracedSource = new ActivitySource($"tests.imlinka.async.{Guid.NewGuid():N}");
         var requestSource = new ActivitySource($"tests.request.async.{Guid.NewGuid():N}");
         using var collector = new ActivityCollector();
@@ -68,17 +72,18 @@ public sealed class TracingDispatchProxyAsyncParentingTests
 
         services.AddProjectTracing(options =>
         {
-            options.TraceAllPublicMethods = true;
+            options.WithPublicMethodsTracing();
             options.WithActivitySource(tracedSource);
         });
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         var archive = provider.GetRequiredService<IEventArchive>();
 
         using var request = requestSource.StartActivity();
         request.Should().NotBeNull();
         var requestSpanId = request.SpanId;
 
+        // Act.
         var first = archive.PullChunkAsync(50, 5);
         var second = archive.PullChunkAsync(60, 5);
         var third = archive.PullChunkAsync(70, 5);
@@ -90,8 +95,54 @@ public sealed class TracingDispatchProxyAsyncParentingTests
             .Where(a => a.Source.Name == tracedSource.Name && a.DisplayName == "EventArchive.PullChunkAsync")
             .ToList();
 
+        // Assert.
         spans.Should().HaveCount(4);
         spans.Should().OnlyContain(s => s.ParentSpanId == requestSpanId);
+        var spanIds = spans.Select(s => s.SpanId).ToHashSet();
+        spans.Should().OnlyContain(s => !spanIds.Contains(s.ParentSpanId));
+    }
+    
+    /// <summary>
+    /// Four sequential sync calls should stay sibling spans under the outer request activity.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenSequentialSyncCallsExecuted_ShouldKeepSameParentAcrossFourCalls()
+    {
+        // Arrange.
+        var tracedSource = new ActivitySource($"tests.imlinka.sync.{Guid.NewGuid():N}");
+        var requestSource = new ActivitySource($"tests.request.sync.{Guid.NewGuid():N}");
+        using var collector = new ActivityCollector();
+
+        var services = new ServiceCollection();
+        services.AddTransient<IRecordCatalog, RecordCatalog>();
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+            options.WithActivitySource(tracedSource);
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var catalog = provider.GetRequiredService<IRecordCatalog>();
+
+        using var request = requestSource.StartActivity();
+        request.Should().NotBeNull();
+        var requestSpanId = request.SpanId;
+
+        // Act.
+        catalog.ReadPage(1, 10).Should().Be(11);
+        catalog.ReadPage(2, 10).Should().Be(12);
+        catalog.ReadPage(3, 10).Should().Be(13);
+        catalog.ReadPage(4, 10).Should().Be(14);
+
+        var spans = collector.Started
+            .Where(a => a.Source.Name == tracedSource.Name && a.DisplayName == "RecordCatalog.ReadPage")
+            .ToList();
+
+        // Assert.
+        spans.Should().HaveCount(4);
+        spans.Should().OnlyContain(s => s.ParentSpanId == requestSpanId);
+
         var spanIds = spans.Select(s => s.SpanId).ToHashSet();
         spans.Should().OnlyContain(s => !spanIds.Contains(s.ParentSpanId));
     }

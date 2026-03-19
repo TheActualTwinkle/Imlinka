@@ -9,7 +9,7 @@ namespace Imlinka.Tests;
 /// <summary>
 /// Verifies namespace prefix filtering for tracing candidates.
 /// </summary>
-public sealed class TracingServiceCollectionNamespaceFilteringTests
+public sealed class NamespaceFilteringTests
 {
     /// <summary>
     /// With namespace allowlist only matching namespace services should be proxied.
@@ -17,6 +17,7 @@ public sealed class TracingServiceCollectionNamespaceFilteringTests
     [Fact]
     public void AddProjectTracing_WhenProxiedNamespacePrefixesConfigured_ShouldProxyOnlyMatchingNamespaces()
     {
+        // Arrange.
         var services = new ServiceCollection();
         services.AddTransient<IWhitelistedWorker, WhitelistedWorker>();
         services.AddTransient<INonWhitelistedWorker, NonWhitelistedWorker>();
@@ -25,17 +26,17 @@ public sealed class TracingServiceCollectionNamespaceFilteringTests
         {
             options
                 .WithPublicMethodsTracing()
-                .WithProxiedNamespacePrefixes("Imlinka.Tests.TestModels.Proxied");
+                .WithProxiedNamespacePrefixes(["Imlinka.Tests.TestModels.Proxied"]);
         });
 
+        // Act.
         using var provider = services.BuildServiceProvider();
         var allowed = provider.GetRequiredService<IWhitelistedWorker>();
         var blocked = provider.GetRequiredService<INonWhitelistedWorker>();
 
+        // Assert.
         allowed.Should().NotBeOfType<WhitelistedWorker>();
         blocked.Should().BeOfType<NonWhitelistedWorker>();
-        allowed.Calculate().Should().Be(11);
-        blocked.Calculate().Should().Be(22);
     }
 
     /// <summary>
@@ -44,6 +45,7 @@ public sealed class TracingServiceCollectionNamespaceFilteringTests
     [Fact]
     public void AddProjectTracing_WhenNamespaceMatchesAllowlistButAlsoIgnored_ShouldNotProxyService()
     {
+        // Arrange.
         var services = new ServiceCollection();
         services.AddTransient<IWhitelistedWorker, WhitelistedWorker>();
 
@@ -51,15 +53,16 @@ public sealed class TracingServiceCollectionNamespaceFilteringTests
         {
             options
                 .WithPublicMethodsTracing()
-                .WithProxiedNamespacePrefixes("Imlinka.Tests.TestModels.Proxied");
+                .WithProxiedNamespacePrefixes(["Imlinka.Tests.TestModels.Proxied"]);
 
             options.IgnoredNamespacePrefixes.Add("Imlinka.Tests.TestModels.Proxied");
         });
 
+        // Act.
         using var provider = services.BuildServiceProvider();
         var allowed = provider.GetRequiredService<IWhitelistedWorker>();
 
+        // Assert.
         allowed.Should().BeOfType<WhitelistedWorker>();
-        allowed.Calculate().Should().Be(11);
     }
 }

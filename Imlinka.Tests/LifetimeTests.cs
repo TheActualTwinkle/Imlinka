@@ -8,7 +8,7 @@ namespace Imlinka.Tests;
 /// <summary>
 /// Verifies that tracing registration keeps original DI lifetimes.
 /// </summary>
-public sealed class TracingServiceCollectionLifetimesTests
+public sealed class LifetimeTests
 {
     /// <summary>
     /// Transient service should produce different implementation instances on each resolve.
@@ -16,15 +16,18 @@ public sealed class TracingServiceCollectionLifetimesTests
     [Fact]
     public void AddProjectTracing_WhenTransientServiceIsRegistered_ShouldPreserveTransientLifetime()
     {
+        // Arrange.
         var services = new ServiceCollection();
         services.AddTransient<ILifetimeProbe, LifetimeProbe>();
 
         services.AddProjectTracing(options => options.WithPublicMethodsTracing());
 
+        // Act.
         using var provider = services.BuildServiceProvider();
         var first = provider.GetRequiredService<ILifetimeProbe>();
         var second = provider.GetRequiredService<ILifetimeProbe>();
 
+        // Assert.
         first.Should().NotBeOfType<LifetimeProbe>();
         second.Should().NotBeOfType<LifetimeProbe>();
         first.InstanceId().Should().NotBe(second.InstanceId());
@@ -36,11 +39,13 @@ public sealed class TracingServiceCollectionLifetimesTests
     [Fact]
     public void AddProjectTracing_WhenScopedServiceIsRegistered_ShouldPreserveScopedLifetime()
     {
+        // Arrange.
         var services = new ServiceCollection();
         services.AddScoped<ILifetimeProbe, LifetimeProbe>();
 
         services.AddProjectTracing(options => options.WithPublicMethodsTracing());
 
+        // Act.
         using var provider = services.BuildServiceProvider();
 
         using var scope1 = provider.CreateScope();
@@ -50,6 +55,7 @@ public sealed class TracingServiceCollectionLifetimesTests
         using var scope2 = provider.CreateScope();
         var inAnotherScope = scope2.ServiceProvider.GetRequiredService<ILifetimeProbe>();
 
+        // Assert.
         firstInScope.Should().NotBeOfType<LifetimeProbe>();
         firstInScope.InstanceId().Should().Be(secondInScope.InstanceId());
         firstInScope.InstanceId().Should().NotBe(inAnotherScope.InstanceId());
@@ -61,17 +67,20 @@ public sealed class TracingServiceCollectionLifetimesTests
     [Fact]
     public void AddProjectTracing_WhenSingletonServiceIsRegistered_ShouldPreserveSingletonLifetime()
     {
+        // Arrange.
         var services = new ServiceCollection();
         services.AddSingleton<ILifetimeProbe, LifetimeProbe>();
 
         services.AddProjectTracing(options => options.WithPublicMethodsTracing());
 
+        // Act.
         using var provider = services.BuildServiceProvider();
         var fromRoot = provider.GetRequiredService<ILifetimeProbe>();
 
         using var scope = provider.CreateScope();
         var fromScope = scope.ServiceProvider.GetRequiredService<ILifetimeProbe>();
 
+        // Assert.
         fromRoot.Should().NotBeOfType<LifetimeProbe>();
         fromRoot.InstanceId().Should().Be(fromScope.InstanceId());
     }
