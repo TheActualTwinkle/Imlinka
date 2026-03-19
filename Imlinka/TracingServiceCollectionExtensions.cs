@@ -371,15 +371,11 @@ public static class TracingServiceCollectionExtensions
         {
             // This path is only valid when KeepOriginalService() was enabled, because that's the only time we add
             // a keyed concrete registration for factory/instance descriptors.
-            // When KeepOriginalService() is disabled, the following resolution would throw, so we fall back to invoking the factory.
-            try
-            {
-                return serviceProvider.GetRequiredKeyedService(inferredKeyedImpl, implementationServiceKey);
-            }
-            catch (InvalidOperationException)
-            {
-                // Fall through to original factory/instance resolution.
-            }
+            // When KeepOriginalService() is disabled, the following resolution would return null, so we fall back to invoking the factory.
+            var keptConcrete = serviceProvider.GetKeyedService(inferredKeyedImpl, implementationServiceKey);
+            
+            if (keptConcrete is not null)
+                return keptConcrete;
         }
 
         // KeepOriginalService() for keyed services with a known implementation type.
