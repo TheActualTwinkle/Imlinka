@@ -51,6 +51,7 @@ internal class TracingDispatchProxy<T> : DispatchProxy where T : class
         var source = _activitySource;
         var hasListeners = source is not null && metadata.IsTraced && source.HasListeners();
         Activity? activity = null;
+        var callerActivity = Activity.Current;
 
         if (hasListeners)
         {
@@ -86,7 +87,11 @@ internal class TracingDispatchProxy<T> : DispatchProxy where T : class
             return result;
 
         if (result is Task task)
+        {
+            Activity.Current = callerActivity;
+            
             return WrapTaskResult(task, metadata.InterfaceMethod.ReturnType, activity);
+        }
 
         activity.Dispose();
         return result;
