@@ -320,6 +320,30 @@ public sealed class TracingServiceCollectionRegistrationTests
     }
 
     /// <summary>
+    /// AddProjectTracing when registration uses AnyKey should return proxy instance for arbitrary key resolve.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenKeyedImplementationTypeIsRegisteredWithAnyKey_ShouldReturnProxyInstanceForRequestedKey()
+    {
+        // Arrange.
+        var services = new ServiceCollection();
+        services.AddKeyedScoped<IKeyedWorker, KeyedWorker>(KeyedService.AnyKey);
+
+        services.AddProjectTracing(options =>
+        {
+            options.WithPublicMethodsTracing();
+        });
+
+        // Act.
+        var serviceProvider = services.BuildServiceProvider();
+        var worker = serviceProvider.GetRequiredKeyedService<IKeyedWorker>("tenant-42");
+
+        // Assert.
+        worker.Should().NotBeNull();
+        worker.Should().NotBeOfType<KeyedWorker>();
+    }
+
+    /// <summary>
     /// AddProjectTracing when registration uses keyed implementation factory should return keyed proxy instance.
     /// </summary>
     [Fact]

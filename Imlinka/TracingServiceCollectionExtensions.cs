@@ -348,6 +348,8 @@ public static class TracingServiceCollectionExtensions
         object? serviceKey,
         object? implementationServiceKey)
     {
+        var effectiveImplementationServiceKey = NormalizeImplementationResolutionKey(implementationServiceKey, serviceKey);
+
         // Only when KeepOriginalService() is enabled for UNKEYED services we pass an Unkeyed,
         // and only then we can safely resolve through the kept concrete registration.
         // For keyed services without KeepOriginalService(), implementationServiceKey equals the key and
@@ -372,7 +374,7 @@ public static class TracingServiceCollectionExtensions
             // This path is only valid when KeepOriginalService() was enabled, because that's the only time we add
             // a keyed concrete registration for factory/instance descriptors.
             // When KeepOriginalService() is disabled, the following resolution would return null, so we fall back to invoking the factory.
-            var keptConcrete = serviceProvider.GetKeyedService(inferredKeyedImpl, implementationServiceKey);
+            var keptConcrete = serviceProvider.GetKeyedService(inferredKeyedImpl, effectiveImplementationServiceKey);
             
             if (keptConcrete is not null)
                 return keptConcrete;
@@ -389,7 +391,7 @@ public static class TracingServiceCollectionExtensions
             && candidate.Descriptor.KeyedImplementationType is not null)
         {
             // Only safe when the original descriptor had a known keyed implementation type.
-            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, implementationServiceKey);
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, effectiveImplementationServiceKey);
         }
 
         if (candidate.ImplementationType is not null)
@@ -400,7 +402,7 @@ public static class TracingServiceCollectionExtensions
             if (implementationServiceKey is Unkeyed)
                 return serviceProvider.GetRequiredService(candidate.ImplementationType);
 
-            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, implementationServiceKey);
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, effectiveImplementationServiceKey);
         }
 
         if (candidate.IsKeyedService && candidate.KeyedImplementationFactory is not null)
@@ -414,6 +416,11 @@ public static class TracingServiceCollectionExtensions
 
         throw new InvalidOperationException($"Cannot resolve implementation for service '{candidate.ServiceType}'.");
     }
+
+    private static object? NormalizeImplementationResolutionKey(object? implementationServiceKey, object? requestedServiceKey) =>
+        ReferenceEquals(implementationServiceKey, KeyedService.AnyKey)
+            ? requestedServiceKey
+            : implementationServiceKey;
 
     private static ServiceDescriptor CreateImplementationDescriptor(
         Type implementationType,
