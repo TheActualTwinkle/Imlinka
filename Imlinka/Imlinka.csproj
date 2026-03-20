@@ -4,7 +4,7 @@
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>Imlinka</PackageId>
-    <Version>0.1.5-rc.2</Version>
+    <Version>0.1.5-rc.3</Version>
     <Authors>Fedor Moykin</Authors>
     <Description>.NET library for automatic trace spans creation using DispatchProxy.</Description>
     <PackageTags>tracing;opentelemetry;dotnet</PackageTags>
