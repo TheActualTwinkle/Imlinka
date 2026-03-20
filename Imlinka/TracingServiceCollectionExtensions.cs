@@ -404,7 +404,7 @@ public static class TracingServiceCollectionExtensions
         }
 
         if (candidate.IsKeyedService && candidate.KeyedImplementationFactory is not null)
-            return candidate.KeyedImplementationFactory(serviceProvider, implementationServiceKey ?? serviceKey);
+            return candidate.KeyedImplementationFactory(serviceProvider, serviceKey);
 
         if (!candidate.IsKeyedService && candidate.ImplementationFactory is not null)
             return candidate.ImplementationFactory(serviceProvider);
