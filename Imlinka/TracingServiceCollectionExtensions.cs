@@ -320,7 +320,7 @@ public static class TracingServiceCollectionExtensions
         {
             return implementationServiceKey is Unkeyed
                 ? ServiceDescriptor.Describe(implementationType, sp => candidate.KeyedImplementationFactory(sp, candidate.ServiceKey), lifetime)
-                : ServiceDescriptor.DescribeKeyed(implementationType, implementationServiceKey, (sp, _) => candidate.KeyedImplementationFactory(sp, candidate.ServiceKey), lifetime);
+                : ServiceDescriptor.DescribeKeyed(implementationType, implementationServiceKey, (sp, serviceKey) => candidate.KeyedImplementationFactory(sp, serviceKey), lifetime);
         }
 
         if (candidate is { IsKeyedService: false, ImplementationFactory: not null })
