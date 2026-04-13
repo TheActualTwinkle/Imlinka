@@ -14,9 +14,21 @@ public sealed class TracingRegistrationOptions
     public bool TraceAllPublicMethods { get; set; }
 
     /// <summary>
+    /// If <c>true</c>, original implementation registrations are kept in DI container
+    /// in addition to traced interface proxies.
+    /// </summary>
+    public bool KeepOriginalImplementation { get; private set; }
+
+    /// <summary>
     /// Namespace prefixes to ignore when scanning registered services.
     /// </summary>
     public ISet<string> IgnoredNamespacePrefixes { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Namespace prefixes that are allowed for tracing.
+    /// If at least one prefix is present, only matching services are proxied.
+    /// </summary>
+    public ISet<string> ProxiedNamespacePrefixes { get; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
     /// ActivitySource of the generated spans.
@@ -59,6 +71,39 @@ public sealed class TracingRegistrationOptions
         
         ActivitySource = activitySource;
         
+        return this;
+    }
+
+    /// <summary>
+    /// Adds namespace prefixes to proxy.
+    /// If configured, only services from these namespaces will be proxied.
+    /// </summary>
+    /// <param name="namespacePrefixes">Namespace prefixes to include into tracing candidates.</param>
+    /// <returns>The <see cref="TracingRegistrationOptions"/> instance.</returns>
+    public TracingRegistrationOptions WithProxiedNamespacePrefixes(IEnumerable<string> namespacePrefixes)
+    {
+        ArgumentNullException.ThrowIfNull(namespacePrefixes);
+
+        foreach (var prefix in namespacePrefixes)
+        {
+            if (string.IsNullOrWhiteSpace(prefix))
+                continue;
+
+            ProxiedNamespacePrefixes.Add(prefix);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Keeps original implementation registrations in DI container while replacing service interfaces with traced proxies.
+    /// For example, <c>AddScoped&lt;IWorker, Worker&gt;()</c> keeps <c>Worker</c> resolvable and registers proxied <c>IWorker</c>.
+    /// </summary>
+    /// <returns>The <see cref="TracingRegistrationOptions"/> instance.</returns>
+    public TracingRegistrationOptions KeepOriginalService()
+    {
+        KeepOriginalImplementation = true;
+
         return this;
     }
 }

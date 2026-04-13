@@ -102,7 +102,8 @@ public static class TracingServiceCollectionExtensions
                     services,
                     candidate,
                     options.TraceAllPublicMethods,
-                    options.ActivitySource);
+                    options.ActivitySource,
+                    options.KeepOriginalImplementation);
             }
 
             return services;
@@ -114,15 +115,61 @@ public static class TracingServiceCollectionExtensions
         TracingRegistrationOptions options,
         IReadOnlyCollection<Assembly>? assemblies) =>
         services
-            .Where(sd => sd.ImplementationType is not null)
-            .Select(sd => new RegisteredCandidate(sd, sd.ServiceType, sd.ImplementationType!))
+            .Select(CreateRegisteredCandidate)
+            .Where(c => c is not null)
+            .Select(c => c!)
             .Where(c => c.ServiceType is { IsInterface: true, IsGenericTypeDefinition: false })
-            .Where(c => c.ImplementationType is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
+            .Where(c => c.ImplementationType is null or { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
             .Where(c => IsDispatchProxyCompatible(c.ServiceType))
-            .Where(c => IsProjectType(c.ServiceType, options) && IsProjectType(c.ImplementationType, options))
-            .Where(c => assemblies is null || assemblies.Contains(c.ServiceType.Assembly) || assemblies.Contains(c.ImplementationType.Assembly))
+            .Where(c => IsProjectType(c.ServiceType, options))
+            .Where(c => c.ImplementationType is null || IsProjectType(c.ImplementationType, options))
+            .Where(c => assemblies is null || assemblies.Contains(c.ServiceType.Assembly) || (c.ImplementationType is not null && assemblies.Contains(c.ImplementationType.Assembly)))
             .Where(c => options.TraceAllPublicMethods || IsMarkedForTracing(c.ServiceType, c.ImplementationType))
             .ToList();
+
+    private static RegisteredCandidate? CreateRegisteredCandidate(ServiceDescriptor descriptor)
+    {
+        if (!TryGetImplementation(descriptor, out var implementationType, out var implementationFactory, out var keyedImplementationFactory, out var implementationInstance))
+            return null;
+
+        return new RegisteredCandidate(
+            descriptor,
+            descriptor.ServiceType,
+            implementationType,
+            descriptor.ServiceKey,
+            descriptor.Lifetime,
+            implementationFactory,
+            keyedImplementationFactory,
+            implementationInstance);
+    }
+
+    private static bool TryGetImplementation(
+        ServiceDescriptor descriptor,
+        out Type? implementationType,
+        out Func<IServiceProvider, object>? implementationFactory,
+        out Func<IServiceProvider, object?, object>? keyedImplementationFactory,
+        out object? implementationInstance)
+    {
+        implementationType = null;
+        implementationFactory = null;
+        keyedImplementationFactory = null;
+        implementationInstance = null;
+
+        if (descriptor.IsKeyedService)
+        {
+            implementationType = descriptor.KeyedImplementationType;
+            keyedImplementationFactory = descriptor.KeyedImplementationFactory;
+            implementationInstance = descriptor.KeyedImplementationInstance;
+
+            return implementationType is not null || keyedImplementationFactory is not null || implementationInstance is not null;
+        }
+
+        implementationType = descriptor.ImplementationType;
+        implementationFactory = descriptor.ImplementationFactory;
+        implementationInstance = descriptor.ImplementationInstance;
+
+        return implementationType is not null || implementationFactory is not null || implementationInstance is not null;
+    }
 
     private static bool IsDispatchProxyCompatible(Type interfaceType) =>
         interfaceType
@@ -164,39 +211,238 @@ public static class TracingServiceCollectionExtensions
         }
     }
 
-    private static bool IsMarkedForTracing(Type interfaceType, Type implementationType)
+    private static bool IsMarkedForTracing(Type interfaceType, Type? implementationType)
     {
-        if (interfaceType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
+        if (IsInterfaceMarkedForTracing(interfaceType))
             return true;
+
+        if (implementationType is null)
+            return false;
 
         if (implementationType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
-            return true;
-
-        if (interfaceType.GetMethods().Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null))
             return true;
 
         return implementationType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null);
     }
 
+    private static bool IsInterfaceMarkedForTracing(Type interfaceType)
+    {
+        if (interfaceType.GetCustomAttribute<TracedAttribute>(inherit: true) is not null)
+            return true;
+
+        return interfaceType.GetMethods().Any(m => m.GetCustomAttribute<TraceAttribute>(inherit: true) is not null);
+    }
+
     private static void RegisterTraced(
         IServiceCollection services,
         RegisteredCandidate candidate,
         bool traceAllPublicMethods,
-        ActivitySource? activitySource)
+        ActivitySource? activitySource,
+        bool keepOriginalImplementation)
     {
         services.Remove(candidate.Descriptor);
 
-        services.TryAdd(ServiceDescriptor.Describe(
-            candidate.ImplementationType,
-            candidate.ImplementationType,
-            candidate.Descriptor.Lifetime));
+        object? implementationServiceKey;
 
-        services.Add(ServiceDescriptor.Describe(candidate.ServiceType, sp =>
+        if (!keepOriginalImplementation && !candidate.IsKeyedService)
+            implementationServiceKey = null;
+        else
+            implementationServiceKey = ResolveImplementationServiceKey(candidate, keepOriginalImplementation);
+
+        // When KeepOriginalService() is enabled, ensure the concrete implementation remains resolvable.
+        // This must work for ImplementationType registrations AND for factory/instance-based registrations.
+        if (keepOriginalImplementation && implementationServiceKey is not null)
         {
-            var implementation = sp.GetRequiredService(candidate.ImplementationType);
+            var implementationType = candidate.ImplementationType ?? TryInferImplementationType(candidate.ServiceType);
+
+            if (implementationType is not null)
+            {
+                var implementationDescriptor = CreateKeptImplementationDescriptor(
+                    implementationType,
+                    candidate,
+                    candidate.Lifetime,
+                    implementationServiceKey);
+
+                services.TryAdd(implementationDescriptor);
+            }
+        }
+        else if (candidate.ImplementationType is not null && implementationServiceKey is not null)
+        {
+            // If we are not keeping original implementation, we may use the concrete type as a
+            // separate registration for keyed services to ensure proxy resolves the correct lifetime.
+            var descriptor = CreateImplementationDescriptor(candidate.ImplementationType, candidate.Lifetime, implementationServiceKey);
+            services.Add(descriptor);
+        }
+
+        services.Add(CreateDescriptor(candidate.ServiceType, candidate, (sp, serviceKey) =>
+        {
+            var implementation = ResolveImplementation(sp, candidate, serviceKey, implementationServiceKey);
             return CreateProxy(candidate.ServiceType, implementation, traceAllPublicMethods, activitySource);
-        }, candidate.Descriptor.Lifetime));
+        }));
+    }
+
+    private static Type? TryInferImplementationType(Type serviceType)
+    {
+        // For factory/instance registrations, ImplementationType is null.
+        // Still, for KeepOriginalService we want to expose the concrete class if it's a typical "IService -> Service" mapping.
+        if (!serviceType.IsInterface)
+            return null;
+
+        var ns = serviceType.Namespace;
+        if (string.IsNullOrWhiteSpace(ns))
+            return null;
+
+        var interfaceName = serviceType.Name;
+        if (interfaceName.Length < 2 || interfaceName[0] != 'I')
+            return null;
+
+        var implementationName = interfaceName[1..];
+        var fullName = $"{ns}.{implementationName}";
+
+        return serviceType.Assembly.GetType(fullName, throwOnError: false, ignoreCase: false);
+    }
+
+    private static ServiceDescriptor CreateKeptImplementationDescriptor(
+        Type implementationType,
+        RegisteredCandidate candidate,
+        ServiceLifetime lifetime,
+        object? implementationServiceKey)
+    {
+        if (candidate.ImplementationInstance is not null)
+        {
+            return implementationServiceKey is Unkeyed
+                ? ServiceDescriptor.Describe(implementationType, _ => candidate.ImplementationInstance, lifetime)
+                : ServiceDescriptor.DescribeKeyed(implementationType, implementationServiceKey, (_, _) => candidate.ImplementationInstance, lifetime);
+        }
+
+        if (candidate is { IsKeyedService: true, KeyedImplementationFactory: not null })
+        {
+            return implementationServiceKey is Unkeyed
+                ? ServiceDescriptor.Describe(implementationType, sp => candidate.KeyedImplementationFactory(sp, candidate.ServiceKey), lifetime)
+                : ServiceDescriptor.DescribeKeyed(implementationType, implementationServiceKey, (sp, serviceKey) => candidate.KeyedImplementationFactory(sp, serviceKey), lifetime);
+        }
+
+        if (candidate is { IsKeyedService: false, ImplementationFactory: not null })
+        {
+            return implementationServiceKey is Unkeyed
+                ? ServiceDescriptor.Describe(implementationType, sp => candidate.ImplementationFactory(sp), lifetime)
+                : ServiceDescriptor.DescribeKeyed(implementationType, implementationServiceKey, (sp, _) => candidate.ImplementationFactory(sp), lifetime);
+        }
+
+        // Fallback for ImplementationType registrations.
+        return CreateImplementationDescriptor(implementationType, lifetime, implementationServiceKey);
+    }
+
+    private static object? ResolveImplementationServiceKey(RegisteredCandidate candidate, bool keepOriginalImplementation)
+    {
+        if (keepOriginalImplementation)
+            return candidate.IsKeyedService ? candidate.ServiceKey : new Unkeyed();
+
+        return candidate.ServiceKey;
+    }
+
+    private static object ResolveImplementation(
+        IServiceProvider serviceProvider,
+        RegisteredCandidate candidate,
+        object? serviceKey,
+        object? implementationServiceKey)
+    {
+        var effectiveImplementationServiceKey = NormalizeImplementationResolutionKey(implementationServiceKey, serviceKey);
+
+        // Only when KeepOriginalService() is enabled for UNKEYED services we pass an Unkeyed,
+        // and only then we can safely resolve through the kept concrete registration.
+        // For keyed services without KeepOriginalService(), implementationServiceKey equals the key and
+        // there is NO kept concrete registration to resolve.
+        if (implementationServiceKey is Unkeyed)
+        {
+            var inferred = candidate.ImplementationType ?? TryInferImplementationType(candidate.ServiceType);
+            if (inferred is not null)
+                return serviceProvider.GetRequiredService(inferred);
+        }
+
+        // KeepOriginalService() for keyed services keeps the concrete keyed registration under the same key.
+        // For factory/instance registrations, candidate.ImplementationType is null, so we must resolve via the inferred type.
+        // Important: we must NOT do this when KeepOriginalService() is disabled (there is no kept concrete registration).
+        if (candidate.IsKeyedService
+            && implementationServiceKey is not null
+            && implementationServiceKey is not Unkeyed
+            && candidate.ImplementationType is null
+            && (candidate.KeyedImplementationFactory is not null || candidate.ImplementationInstance is not null)
+            && TryInferImplementationType(candidate.ServiceType) is { } inferredKeyedImpl)
+        {
+            // This path is only valid when KeepOriginalService() was enabled, because that's the only time we add
+            // a keyed concrete registration for factory/instance descriptors.
+            // When KeepOriginalService() is disabled, the following resolution would return null, so we fall back to invoking the factory.
+            var keptConcrete = serviceProvider.GetKeyedService(inferredKeyedImpl, effectiveImplementationServiceKey);
+            
+            if (keptConcrete is not null)
+                return keptConcrete;
+        }
+
+        // KeepOriginalService() for keyed services with a known implementation type.
+        // However, without KeepOriginalService(), implementationServiceKey is also non-null (it's just the key)
+        // and we must NOT try to resolve a concrete keyed implementation type that was never registered.
+        if (candidate.IsKeyedService
+            && implementationServiceKey is not null
+            && implementationServiceKey is not Unkeyed
+            && candidate.ImplementationType is not null
+            && candidate.Descriptor.IsKeyedService
+            && candidate.Descriptor.KeyedImplementationType is not null)
+        {
+            // Only safe when the original descriptor had a known keyed implementation type.
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, effectiveImplementationServiceKey);
+        }
+
+        if (candidate.ImplementationType is not null)
+        {
+            if (implementationServiceKey is null)
+                return ActivatorUtilities.CreateInstance(serviceProvider, candidate.ImplementationType);
+
+            if (implementationServiceKey is Unkeyed)
+                return serviceProvider.GetRequiredService(candidate.ImplementationType);
+
+            return serviceProvider.GetRequiredKeyedService(candidate.ImplementationType, effectiveImplementationServiceKey);
+        }
+
+        if (candidate.IsKeyedService && candidate.KeyedImplementationFactory is not null)
+            return candidate.KeyedImplementationFactory(serviceProvider, serviceKey);
+
+        if (!candidate.IsKeyedService && candidate.ImplementationFactory is not null)
+            return candidate.ImplementationFactory(serviceProvider);
+
+        if (candidate.ImplementationInstance is not null)
+            return candidate.ImplementationInstance;
+
+        throw new InvalidOperationException($"Cannot resolve implementation for service '{candidate.ServiceType}'.");
+    }
+
+    private static object? NormalizeImplementationResolutionKey(object? implementationServiceKey, object? requestedServiceKey) =>
+        ReferenceEquals(implementationServiceKey, KeyedService.AnyKey)
+            ? requestedServiceKey
+            : implementationServiceKey;
+
+    private static ServiceDescriptor CreateImplementationDescriptor(
+        Type implementationType,
+        ServiceLifetime lifetime,
+        object? serviceKey) =>
+        serviceKey is Unkeyed
+            ? ServiceDescriptor.Describe(implementationType, implementationType, lifetime)
+            : ServiceDescriptor.DescribeKeyed(implementationType, serviceKey, implementationType, lifetime);
+
+    private static ServiceDescriptor CreateDescriptor(
+        Type serviceType,
+        RegisteredCandidate candidate,
+        Func<IServiceProvider, object?, object>? keyedFactory = null)
+    {
+        if (!candidate.IsKeyedService)
+            return keyedFactory is null
+                ? ServiceDescriptor.Describe(serviceType, serviceType, candidate.Lifetime)
+                : ServiceDescriptor.Describe(serviceType, sp => keyedFactory(sp, null), candidate.Lifetime);
+
+        return keyedFactory is null
+            ? ServiceDescriptor.DescribeKeyed(serviceType, candidate.ServiceKey, serviceType, candidate.Lifetime)
+            : ServiceDescriptor.DescribeKeyed(serviceType, candidate.ServiceKey, keyedFactory, candidate.Lifetime);
     }
 
     private static object CreateProxy(
@@ -222,7 +468,7 @@ public static class TracingServiceCollectionExtensions
         bool traceAllPublicMethods,
         ActivitySource? activitySource)
         where TInterface : class
-    {
+        {
         var proxy = DispatchProxy.Create<TInterface, TracingDispatchProxy<TInterface>>();
         ((TracingDispatchProxy<TInterface>)(object)proxy)
             .SetParameters((TInterface)implementation, traceAllPublicMethods, activitySource);
@@ -233,7 +479,13 @@ public static class TracingServiceCollectionExtensions
     {
         var ns = type.Namespace;
         if (string.IsNullOrWhiteSpace(ns))
-            return true;
+            return options.ProxiedNamespacePrefixes.Count == 0;
+
+        var isIncluded = options.ProxiedNamespacePrefixes.Count == 0
+            || options.ProxiedNamespacePrefixes.Any(prefix => ns.StartsWith(prefix, StringComparison.Ordinal));
+
+        if (!isIncluded)
+            return false;
 
         return !options.IgnoredNamespacePrefixes.Any(prefix => ns.StartsWith(prefix, StringComparison.Ordinal));
     }
@@ -241,5 +493,15 @@ public static class TracingServiceCollectionExtensions
     private sealed record RegisteredCandidate(
         ServiceDescriptor Descriptor,
         Type ServiceType,
-        Type ImplementationType);
+        Type? ImplementationType,
+        object? ServiceKey,
+        ServiceLifetime Lifetime,
+        Func<IServiceProvider, object>? ImplementationFactory,
+        Func<IServiceProvider, object?, object>? KeyedImplementationFactory,
+        object? ImplementationInstance)
+    {
+        public bool IsKeyedService => ServiceKey is not null || Descriptor.IsKeyedService;
+    }
+
+    private sealed class Unkeyed;
 }
