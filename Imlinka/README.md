@@ -76,13 +76,14 @@ builder.Services.AddProjectTracingForAssembly(
 
 ## Limitations
 
-For now signed assemblies are not affected because Imlinka does not re-sign assemblies after IL weaving.
-If a signed project references Imlinka, weaving is skipped with a build warning.
-You can disable weaving for that project with `ImlinkaWeavingEnabled=false`.
+1. Install `Imlinka` in the host/app project that produces the final application output, such as a Web API, Worker Service, console app, or Aspire service. Installing it only in a shared `Common` library is not enough to reliably weave the host and all application assemblies.
+2. Imlinka weaves the host output and copied local `ProjectReference` assemblies. NuGet dependency DLLs are not rewritten.
+3. Signed assemblies are not rewritten because Imlinka does not re-sign assemblies after IL weaving. If a signed project references Imlinka, weaving is skipped with a build warning.
+4. You can disable the Imlinka build target in a project with `ImlinkaWeavingEnabled=false`. The switch applies to the project where it is set: if the package is referenced by a host project, it disables weaving for the host output and copied project-reference assemblies handled by that host build. If another project also references Imlinka directly, set the property there as well.
 
 ```xml
 <PropertyGroup>
-    <ImlinkaWeavingEnabled>false</ImlinkaWeavingEnabled>
+  <ImlinkaWeavingEnabled>false</ImlinkaWeavingEnabled>
 </PropertyGroup>
 ```
 

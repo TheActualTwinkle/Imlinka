@@ -21,6 +21,8 @@ public sealed class ImlinkaWeaveTask : Task
 
     public ITaskItem[] SearchPaths { get; set; } = [];
 
+    public string? ImlinkaAssemblyPath { get; set; }
+
     public string? IntermediateDirectory { get; set; }
 
     public override bool Execute()
@@ -48,9 +50,12 @@ public sealed class ImlinkaWeaveTask : Task
 
             using var assembly = AssemblyDefinition.ReadAssembly(AssemblyPath, readerParameters);
 
-            if (!ReferencesImlinka(assembly))
+            if (!ReferencesImlinka(assembly) &&
+                string.IsNullOrWhiteSpace(ImlinkaAssemblyPath))
             {
-                Log.LogMessage(MessageImportance.Low, "Imlinka weaving skipped: assembly does not reference Imlinka.");
+                Log.LogMessage(
+                    MessageImportance.Low,
+                    "Imlinka weaving skipped: assembly does not reference Imlinka and no runtime assembly path was provided.");
 
                 return true;
             }
@@ -64,7 +69,8 @@ public sealed class ImlinkaWeaveTask : Task
                 return true;
             }
 
-            var context = WeavingContext.Create(assembly.MainModule);
+            var imlinkaReference = EnsureImlinkaReference(assembly.MainModule, ImlinkaAssemblyPath);
+            var context = WeavingContext.Create(assembly.MainModule, imlinkaReference);
             var count = 0;
 
             foreach (var type in assembly.MainModule.Types.SelectMany(EnumerateTypes))
@@ -145,6 +151,30 @@ public sealed class ImlinkaWeaveTask : Task
     private static bool ReferencesImlinka(AssemblyDefinition assembly) =>
         assembly.Name.Name == "Imlinka"
         || assembly.MainModule.AssemblyReferences.Any(r => r.Name == "Imlinka");
+
+    private static AssemblyNameReference EnsureImlinkaReference(ModuleDefinition module, string? imlinkaAssemblyPath)
+    {
+        var existing = module.AssemblyReferences.FirstOrDefault(r => r.Name == "Imlinka");
+
+        if (existing is not null)
+            return existing;
+
+        if (string.IsNullOrWhiteSpace(imlinkaAssemblyPath) ||
+            !File.Exists(imlinkaAssemblyPath))
+            throw new InvalidOperationException("Imlinka runtime assembly was not found, so a reference cannot be added.");
+
+        using var runtimeAssembly = AssemblyDefinition.ReadAssembly(imlinkaAssemblyPath);
+        var runtimeName = runtimeAssembly.Name;
+        var reference = new AssemblyNameReference(runtimeName.Name, runtimeName.Version)
+        {
+            Culture = runtimeName.Culture,
+            PublicKeyToken = runtimeName.PublicKeyToken
+        };
+
+        module.AssemblyReferences.Add(reference);
+
+        return reference;
+    }
 
     private static bool IsSigned(AssemblyDefinition assembly) =>
         assembly.Name.HasPublicKey ||
@@ -559,14 +589,14 @@ public sealed class ImlinkaWeaveTask : Task
 
         public MethodReference StartScopeMethod { get; private set; } = null!;
 
-        public static WeavingContext Create(ModuleDefinition module)
+        public static WeavingContext Create(ModuleDefinition module, AssemblyNameReference imlinkaReference)
         {
             var typeType = module.ImportReference(typeof(Type));
             var stringType = module.TypeSystem.String;
             var boolType = module.TypeSystem.Boolean;
 
             var runtimeType = new TypeReference(
-                "Imlinka", "ProjectTracingRuntime", module, module.AssemblyReferences.First(r => r.Name == "Imlinka"));
+                "Imlinka", "ProjectTracingRuntime", module, imlinkaReference);
 
             var disposableType = module.ImportReference(typeof(IDisposable));
             var exceptionType = module.ImportReference(typeof(Exception));

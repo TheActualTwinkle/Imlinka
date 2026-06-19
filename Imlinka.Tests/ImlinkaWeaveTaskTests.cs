@@ -2,6 +2,7 @@ using FluentAssertions;
 using Imlinka.Build;
 using Microsoft.Build.Framework;
 using Mono.Cecil;
+using Mono.Cecil.Cil;
 using IDictionary = System.Collections.IDictionary;
 using Xunit;
 
@@ -12,6 +13,51 @@ namespace Imlinka.Tests;
 /// </summary>
 public sealed class ImlinkaWeaveTaskTests
 {
+    [Fact]
+    public void Execute_WhenAssemblyDoesNotReferenceImlinkaAndRuntimePathProvided_ShouldAddReferenceAndWeavePublicMethods()
+    {
+        var assemblyPath = Path.Combine(Path.GetTempPath(), $"Imlinka.Plain.{Guid.NewGuid():N}.dll");
+
+        try
+        {
+            CreatePlainAssembly(assemblyPath);
+            var buildEngine = new TestBuildEngine();
+            var task = new ImlinkaWeaveTask
+            {
+                BuildEngine = buildEngine,
+                AssemblyPath = assemblyPath,
+                ImlinkaAssemblyPath = typeof(TraceAttribute).Assembly.Location
+            };
+
+            task.Execute().Should().BeTrue();
+
+            using var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
+            assembly.MainModule.AssemblyReferences
+                .Should()
+                .Contain(reference => reference.Name == "Imlinka");
+
+            assembly.MainModule
+                .GetType("Imlinka.Tests.Generated.PlainWorker")
+                .Methods
+                .Single(method => method.Name == "Run")
+                .Body
+                .Instructions
+                .Any(instruction =>
+                    instruction.Operand is MethodReference
+                    {
+                        DeclaringType.FullName: "Imlinka.ProjectTracingRuntime",
+                        Name: "StartScope"
+                    })
+                .Should()
+                .BeTrue();
+        }
+        finally
+        {
+            if (File.Exists(assemblyPath))
+                File.Delete(assemblyPath);
+        }
+    }
+
     [Fact]
     public void Execute_WhenAssemblyIsSigned_ShouldSkipWithWarning()
     {
@@ -36,6 +82,30 @@ public sealed class ImlinkaWeaveTaskTests
             if (File.Exists(assemblyPath))
                 File.Delete(assemblyPath);
         }
+    }
+
+    private static void CreatePlainAssembly(string assemblyPath)
+    {
+        var assembly = AssemblyDefinition.CreateAssembly(
+            new AssemblyNameDefinition("Imlinka.PlainFixture", new Version(1, 0, 0, 0)),
+            "Imlinka.PlainFixture",
+            ModuleKind.Dll);
+
+        var type = new TypeDefinition(
+            "Imlinka.Tests.Generated",
+            "PlainWorker",
+            TypeAttributes.Public | TypeAttributes.Class,
+            assembly.MainModule.TypeSystem.Object);
+
+        var method = new MethodDefinition(
+            "Run",
+            MethodAttributes.Public | MethodAttributes.HideBySig,
+            assembly.MainModule.TypeSystem.Void);
+
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+        assembly.MainModule.Types.Add(type);
+        assembly.Write(assemblyPath);
     }
 
     private static void CreateSignedAssemblyReferencingImlinka(string assemblyPath)

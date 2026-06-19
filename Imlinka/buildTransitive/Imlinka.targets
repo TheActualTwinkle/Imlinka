@@ -12,12 +12,18 @@
       and Exists('$(TargetPath)')">
 
     <ItemGroup>
+      <ImlinkaWeaverAssembly Include="$(TargetPath)" />
+      <ImlinkaWeaverAssembly
+        Include="$(TargetDir)%(ReferencePath.Filename)%(ReferencePath.Extension)"
+        Condition="'%(ReferencePath.Extension)' == '.dll'
+          and '%(ReferencePath.ReferenceSourceTarget)' == 'ProjectReference'" />
       <ImlinkaWeaverSearchPath Include="$(TargetDir)" />
       <ImlinkaWeaverSearchPath Include="%(ReferencePath.RootDir)%(ReferencePath.Directory)" />
     </ItemGroup>
 
     <ImlinkaWeaveTask
-      AssemblyPath="$(TargetPath)"
+      AssemblyPath="%(ImlinkaWeaverAssembly.Identity)"
+      ImlinkaAssemblyPath="$(TargetDir)Imlinka.dll"
       References="@(ReferencePath)"
       SearchPaths="@(ImlinkaWeaverSearchPath)"
       IntermediateDirectory="$(IntermediateOutputPath)" />
