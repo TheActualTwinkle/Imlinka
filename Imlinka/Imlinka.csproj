@@ -5,7 +5,7 @@
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>Imlinka</PackageId>
-    <Version>0.1.5</Version>
+    <Version>0.2.0-rc.1</Version>
     <Authors>Fedor Moykin</Authors>
     <Description>.NET library for automatic trace spans creation using build-time IL weaving.</Description>
     <PackageTags>tracing;opentelemetry;dotnet</PackageTags>
@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="/" Link="README.md" />
     <None Include="../.github/images/logo.png" Pack="true" PackagePath="/" Visible="false" />
     <None Include="buildTransitive/Imlinka.targets" Pack="true" PackagePath="buildTransitive/Imlinka.targets" />
   </ItemGroup>
