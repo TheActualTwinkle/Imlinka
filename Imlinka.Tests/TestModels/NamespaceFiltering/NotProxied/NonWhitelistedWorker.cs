@@ -1,5 +1,13 @@
 namespace Imlinka.Tests.TestModels.NotProxied;
 
-internal interface INonWhitelistedWorker;
+internal interface INonWhitelistedWorker
+{
+    void Run();
+}
 
-internal sealed class NonWhitelistedWorker : INonWhitelistedWorker;
+internal sealed class NonWhitelistedWorker : INonWhitelistedWorker
+{
+    public void Run()
+    {
+    }
+}

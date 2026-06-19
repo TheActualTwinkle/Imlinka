@@ -1,0 +1,25 @@
+<Project>
+  <UsingTask
+    TaskName="Imlinka.Build.ImlinkaWeaveTask"
+    AssemblyFile="$(MSBuildThisFileDirectory)..\tasks\netstandard2.0\Imlinka.Tasks.dll" />
+
+  <Target
+    Name="ImlinkaWeave"
+    AfterTargets="CopyFilesToOutputDirectory"
+    Condition="'$(ImlinkaWeavingEnabled)' != 'false'
+      and '$(DesignTimeBuild)' != 'true'
+      and '$(IsCrossTargetingBuild)' != 'true'
+      and Exists('$(TargetPath)')">
+
+    <ItemGroup>
+      <ImlinkaWeaverSearchPath Include="$(TargetDir)" />
+      <ImlinkaWeaverSearchPath Include="%(ReferencePath.RootDir)%(ReferencePath.Directory)" />
+    </ItemGroup>
+
+    <ImlinkaWeaveTask
+      AssemblyPath="$(TargetPath)"
+      References="@(ReferencePath)"
+      SearchPaths="@(ImlinkaWeaverSearchPath)"
+      IntermediateDirectory="$(IntermediateOutputPath)" />
+  </Target>
+</Project>

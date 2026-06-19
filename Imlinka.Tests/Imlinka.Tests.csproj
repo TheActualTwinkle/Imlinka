@@ -4,12 +4,16 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Build.Framework" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Mono.Cecil" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
@@ -19,8 +23,37 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Imlinka\Imlinka.csproj" />
+    <Reference Include="Imlinka.Tasks" HintPath="..\Imlinka.Tasks\bin\$(Configuration)\netstandard2.0\Imlinka.Tasks.dll" />
   </ItemGroup>
 
+  <Target Name="BuildImlinkaTasksForTests" BeforeTargets="ResolveReferences">
+    <MSBuild
+      Projects="..\Imlinka.Tasks\Imlinka.Tasks.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <UsingTask
+    TaskName="Imlinka.Build.ImlinkaWeaveTask"
+    AssemblyFile="..\Imlinka.Tasks\bin\$(Configuration)\netstandard2.0\Imlinka.Tasks.dll" />
+
+  <Target
+    Name="ImlinkaWeaveTests"
+    AfterTargets="CopyFilesToOutputDirectory"
+    Condition="'$(DesignTimeBuild)' != 'true' and Exists('$(TargetPath)')">
+    <MSBuild
+      Projects="..\Imlinka.Tasks\Imlinka.Tasks.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <ImlinkaTestWeaverSearchPath Include="$(TargetDir)" />
+      <ImlinkaTestWeaverSearchPath Include="%(ReferencePath.RootDir)%(ReferencePath.Directory)" />
+    </ItemGroup>
+    <ImlinkaWeaveTask
+      AssemblyPath="$(TargetPath)"
+      References="@(ReferencePath)"
+      SearchPaths="@(ImlinkaTestWeaverSearchPath)"
+      IntermediateDirectory="$(IntermediateOutputPath)" />
+  </Target>
+
 </Project>
-
-

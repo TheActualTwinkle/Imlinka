@@ -1,106 +1,91 @@
 # Imlinka
 
-<p align="center">
-	<img src=".github/images/logo.png" alt="Logo" style="width: 30%">
-</p>
-
 `Imlinka` is a tracing injection library for .NET.
-It wraps registered services with `DispatchProxy` and emits `Activity` spans automatically.
+It adds method-level `Activity` spans through build-time IL weaving.
 
 ## What It Solves
 
-Seeing meaningful method-level spans in traces usually requires manually wrapping calls in `Activity` blocks.
-That approach is repetitive, easy to get wrong, and hard to maintain in larger codebases.
+Seeing meaningful method-level spans in traces requires manually wrapping calls in `Activity` blocks.
 
-`Imlinka` removes that manual work by adding method/assembly-level tracing without changing service implementations.
-
-Trace without using the explicit 'Activity':
-![trace-before](./.github/images/trace-before.png)
-
-Trace with Imlinka's automatic method-level spans:
-![trace-after](./.github/images/trace-after.png)
+Imlinka removes that manual work by allowing you to add method-level and assembly-filtered tracing automatically, without handwritten Activity wrappers.
 
 ## Installation
 
 ```bash
 dotnet add package Imlinka
 ```
-
 ## Attribute-Based Tracing
 
-Use `[Traced]` to trace all public methods of the interface or class.
+### Use `[Traced]` to trace all public methods of a class or interface.
 
 ```csharp
 using Imlinka;
 
 [Traced]
-public interface IWorker
+public class Worker
 {
-    Task DoWork();
-    Task RebuildCache();
+    public Task DoWork() => Task.CompletedTask;
+    public Task RebuildCache() => Task.CompletedTask;
 }
 ```
 
-Use `[Trace]` to trace specific methods.
+### Use `[Trace]` to trace specific methods on a class or interface.
 
 ```csharp
 using Imlinka;
 
-public interface IReportService
+public class ReportService
 {
     [Trace("report.generate")]
-    Task<byte[]> GenerateAsync(Guid id);
+    public Task<byte[]> GenerateAsync(Guid id) => Task.FromResult(Array.Empty<byte>());
 
     [Trace]
-    Task UploadAsync(byte[] data);
-
-    Task<bool> ExistsAsync(Guid id);
+    public Task UploadAsync(byte[] data) => Task.CompletedTask;
+    
+    public Task<bool> ExistsAsync(Guid id) => Task.FromResult(true);
 }
 ```
 
-If `SpanName` is not provided, the default format is `{TypeName}.{MethodName}`.
+If `SpanName` ("report.generate") is not provided, the default is `{TypeName}.{MethodName}`.
 
-## DI Integration
+## DI
 
-Register your services first, then apply tracing injection.
+Use DI to configure tracing options, such as tracing all public methods or using a custom `ActivitySource`.
+IL weaving still happens automatically during build.
 
 ```csharp
 using Imlinka;
 
-builder.Services.AddScoped<IWorker, Worker>();
-builder.Services.AddScoped<IJumper, Jumper>();
-builder.Services.AddScoped<ITester, Tester>();
+builder.Services.AddProjectTracing(options => options
+        .WithActivitySource(SOME_ACTIVITY_SOURCE) // Sets the ActivitySource to use for emitted spans.
+        .IgnoreDefaultNamespaces()); // Ignores 'Microsoft' and 'System' namespaces.
+```
 
-builder.Services.AddProjectTracing(options => 
-    options
-        .WithPublicMethodsTracing()
-        .WithActivitySource(<Some ActivitySource>)
-        .IgnoreDefaultNamespaces());
+_`WithActivitySource(SOME_ACTIVITY_SOURCE)` must be traced by OpenTelemetry to be visible in traces._
 
-- or -
-    
+If you want to trace all public methods, even those without attributes, use `WithPublicMethodsTracing()`.
+
+To restrict tracing to one assembly, use `AddProjectTracingForAssembly(...)`.
+
+```csharp
 builder.Services.AddProjectTracingForAssembly(
-    typeof(IWorker).Assembly,
+    typeof(Worker).Assembly,
     options => options
         .WithPublicMethodsTracing()
-        .WithActivitySource(<Some ActivitySource>)
+        .WithActivitySource(SOME_ACTIVITY_SOURCE)
         .IgnoreDefaultNamespaces());
 ```
 
-If `.WithPublicMethodsTracing()` used, all public methods of registered classes will be traced, even without `[Traced]` or `[Trace]` attributes.
+## Limitations
 
-## Benchmarks
+Signed assemblies are not rewritten yet because Imlinka does not re-sign assemblies after IL weaving.
+If a signed project references Imlinka, weaving is skipped with a build warning.
+You can disable weaving for that project with `ImlinkaWeavingEnabled=false`.
 
-[Benchmarks](./Imlinka.Benchmarks) shows that Imlinka adds minimal overhead to method calls.
+## Web Sample Project
 
-<p align="center">
-	<img src=".github/images/benchmarks.png" alt="Logo" style="width: 100%">
-</p>
-
-## Sample Project
-
-See [Imlinka.SampleWeb](./Imlinka.SampleWeb) for a complete ASP.NET example.
+Check out the [Web Sample Project](../Imlinka.SampleWeb) for a complete example of using Imlinka in an ASP.NET application.
 
 ## License
 
-Imlinka is licensed under the MIT License. See `LICENSE` for details.
+Imlinka is licensed under the MIT License. See the [LICENSE](../LICENSE) file for more details.

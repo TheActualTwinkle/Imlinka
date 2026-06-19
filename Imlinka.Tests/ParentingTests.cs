@@ -8,7 +8,7 @@ using Xunit;
 namespace Imlinka.Tests;
 
 /// <summary>
-/// Verifies parent-child relationships for async and sync spans created by tracing proxy.
+/// Verifies parent-child relationships for async and sync spans created by IL weaving.
 /// </summary>
 public sealed class ParentingTests
 {

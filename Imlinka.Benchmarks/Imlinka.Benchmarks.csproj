@@ -8,6 +8,29 @@
     <ProjectReference Include="..\Imlinka\Imlinka.csproj" />
   </ItemGroup>
 
+  <UsingTask
+    TaskName="Imlinka.Build.ImlinkaWeaveTask"
+    AssemblyFile="..\Imlinka.Tasks\bin\$(Configuration)\netstandard2.0\Imlinka.Tasks.dll" />
+
+  <Target
+    Name="ImlinkaWeaveBenchmarks"
+    AfterTargets="CopyFilesToOutputDirectory"
+    Condition="'$(DesignTimeBuild)' != 'true' and Exists('$(TargetPath)')">
+    <MSBuild
+      Projects="..\Imlinka.Tasks\Imlinka.Tasks.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <ImlinkaBenchmarkWeaverSearchPath Include="$(TargetDir)" />
+      <ImlinkaBenchmarkWeaverSearchPath Include="%(ReferencePath.RootDir)%(ReferencePath.Directory)" />
+    </ItemGroup>
+    <ImlinkaWeaveTask
+      AssemblyPath="$(TargetPath)"
+      References="@(ReferencePath)"
+      SearchPaths="@(ImlinkaBenchmarkWeaverSearchPath)"
+      IntermediateDirectory="$(IntermediateOutputPath)" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="JetBrains.Annotations" />

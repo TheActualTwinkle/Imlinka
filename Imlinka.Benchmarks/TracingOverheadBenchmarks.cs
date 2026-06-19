@@ -9,7 +9,7 @@ namespace Imlinka.Benchmarks;
 public class WorkerTracingOverheadBenchmarks
 {
     private IWorker _worker = null!;
-    private IWorkerTraced _workerProxy = null!;
+    private IWorkerTraced _workerTraced = null!;
     private IWorker _workerManual = null!;
 
     // Load parameter: higher N means more CPU work.
@@ -30,17 +30,15 @@ public class WorkerTracingOverheadBenchmarks
         var spManual = manual.BuildServiceProvider();
         _workerManual = spManual.GetRequiredService<IWorker>();
         
-        var proxy = new ServiceCollection();
-        proxy.AddTransient<IWorkerTraced>(_ => new WorkerTraced(FibonacciN));
-        proxy.AddProjectTracingForAssembly(
-            typeof(WorkerTraced).Assembly,
-            options =>
-            {
-                options.WithActivitySource(BenchTelemetry.ActivitySource);
-                options.TraceAllPublicMethods = true;
-            });
-        var spProxy = proxy.BuildServiceProvider();
-        _workerProxy = spProxy.GetRequiredService<IWorkerTraced>();
+        var traced = new ServiceCollection();
+        traced.AddTransient<IWorkerTraced>(_ => new WorkerTraced(FibonacciN));
+        traced.AddProjectTracing(options =>
+        {
+            options.WithActivitySource(BenchTelemetry.ActivitySource);
+            options.TraceAllPublicMethods = true;
+        });
+        var spTraced = traced.BuildServiceProvider();
+        _workerTraced = spTraced.GetRequiredService<IWorkerTraced>();
     }
 
     [Benchmark(Baseline = true)]
@@ -50,5 +48,5 @@ public class WorkerTracingOverheadBenchmarks
     public async Task<int> CountFibonacci_ManualTrace() => await _workerManual.DoWork();
 
     [Benchmark]
-    public async Task<int> Fibonacci_Traced() => await _workerProxy.DoWork();
+    public async Task<int> Fibonacci_Traced() => await _workerTraced.DoWork();
 }
