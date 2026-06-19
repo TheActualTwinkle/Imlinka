@@ -61,8 +61,6 @@ builder.Services.AddProjectTracing(options => options
         .IgnoreDefaultNamespaces()); // Ignores 'Microsoft' and 'System' namespaces.
 ```
 
-_`WithActivitySource(SOME_ACTIVITY_SOURCE)` must be traced by OpenTelemetry to be visible in traces._
-
 If you want to trace all public methods, even those without attributes, use `WithPublicMethodsTracing()`.
 
 To restrict tracing to one assembly, use `AddProjectTracingForAssembly(...)`.
@@ -78,9 +76,15 @@ builder.Services.AddProjectTracingForAssembly(
 
 ## Limitations
 
-Signed assemblies are not rewritten yet because Imlinka does not re-sign assemblies after IL weaving.
+For now signed assemblies are not affected because Imlinka does not re-sign assemblies after IL weaving.
 If a signed project references Imlinka, weaving is skipped with a build warning.
 You can disable weaving for that project with `ImlinkaWeavingEnabled=false`.
+
+```xml
+<PropertyGroup>
+  <ImlinkaWeavingEnabled>false</ImlinkaWeavingEnabled>
+</PropertyGroup>
+```
 
 ## Web Sample Project
 
