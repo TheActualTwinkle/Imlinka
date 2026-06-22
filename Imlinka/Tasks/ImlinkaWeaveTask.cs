@@ -13,6 +13,8 @@ public sealed class ImlinkaWeaveTask : Task
     private const string TraceAttributeFullName = "Imlinka.TraceAttribute";
     private const string TracedAttributeFullName = "Imlinka.TracedAttribute";
     private const string RuntimeFullName = "Imlinka.ProjectTracingRuntime";
+    private const int FileAccessRetryCount = 5;
+    private const int FileAccessRetryDelayMilliseconds = 100;
 
     [Required]
     public string AssemblyPath { get; set; } = string.Empty;
@@ -44,11 +46,13 @@ public sealed class ImlinkaWeaveTask : Task
             var readerParameters = new ReaderParameters
             {
                 ReadSymbols = readSymbols,
-                ReadWrite = true,
+                InMemory = true,
+                ReadWrite = false,
+                ReadingMode = ReadingMode.Immediate,
                 AssemblyResolver = resolver
             };
 
-            using var assembly = AssemblyDefinition.ReadAssembly(AssemblyPath, readerParameters);
+            using var assembly = ReadAssemblyWithRetry(AssemblyPath, readerParameters);
 
             if (!ReferencesImlinka(assembly) &&
                 string.IsNullOrWhiteSpace(ImlinkaAssemblyPath))
@@ -108,7 +112,7 @@ public sealed class ImlinkaWeaveTask : Task
                 return true;
             }
 
-            assembly.Write(new WriterParameters { WriteSymbols = readSymbols });
+            WriteAssemblyWithRetry(assembly, readSymbols);
             Log.LogMessage(MessageImportance.High, "Imlinka weaving completed: {0} method(s) changed in {1}.", count, AssemblyPath);
 
             return true;
@@ -118,6 +122,48 @@ public sealed class ImlinkaWeaveTask : Task
             Log.LogErrorFromException(ex, true);
 
             return false;
+        }
+    }
+
+    private AssemblyDefinition ReadAssemblyWithRetry(string assemblyPath, ReaderParameters readerParameters)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return AssemblyDefinition.ReadAssembly(assemblyPath, readerParameters);
+            }
+            catch (IOException) when (attempt < FileAccessRetryCount)
+            {
+                Log.LogMessage(
+                    MessageImportance.Low,
+                    "Imlinka weaving is waiting for file access to '{0}' before reading it.",
+                    assemblyPath);
+
+                Thread.Sleep(FileAccessRetryDelayMilliseconds);
+            }
+        }
+    }
+
+    private void WriteAssemblyWithRetry(AssemblyDefinition assembly, bool writeSymbols)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                assembly.Write(AssemblyPath, new WriterParameters { WriteSymbols = writeSymbols });
+
+                return;
+            }
+            catch (IOException) when (attempt < FileAccessRetryCount)
+            {
+                Log.LogMessage(
+                    MessageImportance.Low,
+                    "Imlinka weaving is waiting for file access to '{0}' before writing it.",
+                    AssemblyPath);
+
+                Thread.Sleep(FileAccessRetryDelayMilliseconds);
+            }
         }
     }
 
