@@ -1,5 +1,13 @@
 namespace Imlinka.Tests.TestModels.Proxied;
 
-internal interface IWhitelistedWorker;
+internal interface IWhitelistedWorker
+{
+    void Run();
+}
 
-internal sealed class WhitelistedWorker : IWhitelistedWorker;
+internal sealed class WhitelistedWorker : IWhitelistedWorker
+{
+    public void Run()
+    {
+    }
+}

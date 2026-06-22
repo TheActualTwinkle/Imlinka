@@ -13,35 +13,6 @@ namespace Imlinka.Tests;
 public sealed class TracedAttributeTests
 {
     /// <summary>
-    /// [Trace] on interface method should proxy service and use explicit span name.
-    /// </summary>
-    [Fact]
-    public void AddProjectTracing_WhenInterfaceMethodMarkedWithTrace_ShouldUseExplicitTraceSpanName()
-    {
-        // Arrange.
-        var tracedSource = new ActivitySource($"tests.attributes.interface-trace.{Guid.NewGuid():N}");
-        using var collector = new ActivityCollector();
-
-        var services = new ServiceCollection();
-        services.AddTransient<IMethodTraceWorker, InterfaceTraceWorker>();
-
-        services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
-
-        using var provider = services.BuildServiceProvider();
-        var worker = provider.GetRequiredService<IMethodTraceWorker>();
-
-        // Act.
-        worker.Work();
-        var spans = collector.Started
-            .Where(a => a.Source.Name == tracedSource.Name)
-            .ToList();
-
-        // Assert.
-        worker.Should().NotBeOfType<InterfaceTraceWorker>();
-        spans.Should().ContainSingle(a => a.DisplayName == "custom.interface.span");
-    }
-
-    /// <summary>
     /// [Trace] on implementation method should trace only the marked method when TraceAllPublicMethods is disabled.
     /// </summary>
     [Fact]
@@ -67,18 +38,67 @@ public sealed class TracedAttributeTests
             .ToList();
 
         // Assert.
-        worker.Should().NotBeOfType<ImplementationTraceWorker>();
+        worker.Should().BeOfType<ImplementationTraceWorker>();
         spans.Should().ContainSingle(a => a.DisplayName == "ImplementationTraceWorker.Important");
         spans.Should().NotContain(a => a.DisplayName == "ImplementationTraceWorker.Plain");
     }
 
     /// <summary>
-    /// [Traced] on interface should proxy service and apply interface prefix to span name.
+    /// [Trace] on interface method should be applied to the implementing method.
     /// </summary>
     [Fact]
-    public void AddProjectTracing_WhenInterfaceMarkedWithTraced_ShouldUseInterfacePrefixInSpanName()
+    public void AddProjectTracing_WhenInterfaceMethodMarkedWithTrace_ShouldTraceImplementationMethod()
     {
-        // Arrange.
+        var tracedSource = new ActivitySource($"tests.attributes.interface-trace.{Guid.NewGuid():N}");
+        using var collector = new ActivityCollector();
+
+        var services = new ServiceCollection();
+        services.AddTransient<IMethodTraceWorker, InterfaceTraceWorker>();
+
+        services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IMethodTraceWorker>().Work();
+
+        collector.Started
+            .Where(a => a.Source.Name == tracedSource.Name)
+            .Should()
+            .ContainSingle(a => a.DisplayName == "custom.interface.span");
+    }
+
+    /// <summary>
+    /// [Trace] on closed generic interface method should be applied to the implementing method.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenGenericInterfaceMethodMarkedWithTrace_ShouldTraceImplementationMethod()
+    {
+        var tracedSource = new ActivitySource($"tests.attributes.generic-interface-trace.{Guid.NewGuid():N}");
+        using var collector = new ActivityCollector();
+
+        var services = new ServiceCollection();
+        services.AddTransient<IGenericTraceWorker<string>, GenericInterfaceTraceWorker>();
+
+        services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
+
+        using var provider = services.BuildServiceProvider();
+        var worker = provider.GetRequiredService<IGenericTraceWorker<string>>();
+        worker.Handle("value");
+        worker.HandleMany(["one", "two"]);
+
+        var spans = collector.Started
+            .Where(a => a.Source.Name == tracedSource.Name)
+            .ToList();
+
+        spans.Should().ContainSingle(a => a.DisplayName == "generic.interface.span");
+        spans.Should().ContainSingle(a => a.DisplayName == "generic.interface.collection.span");
+    }
+
+    /// <summary>
+    /// [Traced] on interface should be applied to public implementation methods.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenInterfaceMarkedWithTraced_ShouldTraceImplementationMethods()
+    {
         var tracedSource = new ActivitySource($"tests.attributes.interface-traced.{Guid.NewGuid():N}");
         using var collector = new ActivityCollector();
 
@@ -88,21 +108,16 @@ public sealed class TracedAttributeTests
         services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
 
         using var provider = services.BuildServiceProvider();
-        var worker = provider.GetRequiredService<ITracedContractWorker>();
+        provider.GetRequiredService<ITracedContractWorker>().Run();
 
-        // Act.
-        worker.Run();
-        var spans = collector.Started
+        collector.Started
             .Where(a => a.Source.Name == tracedSource.Name)
-            .ToList();
-
-        // Assert.
-        worker.Should().NotBeOfType<TracedInterfaceWorker>();
-        spans.Should().ContainSingle(a => a.DisplayName == "iface.prefix.TracedInterfaceWorker.Run");
+            .Should()
+            .ContainSingle(a => a.DisplayName == "iface.prefix.TracedInterfaceWorker.Run");
     }
 
     /// <summary>
-    /// [Traced] on implementation class should proxy service and apply class prefix to span name.
+    /// [Traced] on implementation class should trace public methods and apply class prefix to span name.
     /// </summary>
     [Fact]
     public void AddProjectTracing_WhenImplementationMarkedWithTraced_ShouldUseClassPrefixInSpanName()
@@ -126,7 +141,7 @@ public sealed class TracedAttributeTests
             .ToList();
 
         // Assert.
-        worker.Should().NotBeOfType<TracedClassWorker>();
+        worker.Should().BeOfType<TracedClassWorker>();
         spans.Should().ContainSingle(a => a.DisplayName == "class.prefix.TracedClassWorker.Execute");
     }
 
@@ -155,7 +170,7 @@ public sealed class TracedAttributeTests
             .ToList();
 
         // Assert.
-        worker.Should().NotBeOfType<TracedAndMethodTraceWorker>();
+        worker.Should().BeOfType<TracedAndMethodTraceWorker>();
         spans.Should().ContainSingle(a => a.DisplayName == "override.span");
     }
 
@@ -184,7 +199,61 @@ public sealed class TracedAttributeTests
             .ToList();
 
         // Assert.
-        worker.Should().NotBeOfType<InheritedTracedWorker>();
+        worker.Should().BeOfType<InheritedTracedWorker>();
         spans.Should().ContainSingle(a => a.DisplayName == "base.prefix.InheritedTracedWorker.Ping");
+    }
+
+    /// <summary>
+    /// [Trace] on ValueTask methods should keep spans open until returned value tasks complete.
+    /// </summary>
+    [Fact]
+    public async Task AddProjectTracing_WhenValueTaskMethodsAreMarkedWithTrace_ShouldTraceUntilCompletion()
+    {
+        var tracedSource = new ActivitySource($"tests.attributes.valuetask.{Guid.NewGuid():N}");
+        using var collector = new ActivityCollector();
+
+        var services = new ServiceCollection();
+        services.AddTransient<IValueTaskWorker, ValueTaskWorker>();
+
+        services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
+
+        await using var provider = services.BuildServiceProvider();
+        var worker = provider.GetRequiredService<IValueTaskWorker>();
+
+        await worker.RunAsync();
+        var result = await worker.CountAsync();
+
+        result.Should().Be(42);
+        var spans = collector.Started
+            .Where(a => a.Source.Name == tracedSource.Name)
+            .ToList();
+
+        spans.Should().ContainSingle(a => a.DisplayName == "ValueTaskWorker.RunAsync");
+        spans.Should().ContainSingle(a => a.DisplayName == "ValueTaskWorker.CountAsync");
+        spans.Should().OnlyContain(a => a.Duration > TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Ref-return methods should be left untouched because the generic return-value rewrite is unsafe for them.
+    /// </summary>
+    [Fact]
+    public void AddProjectTracing_WhenRefReturnMethodMarkedWithTrace_ShouldSkipMethod()
+    {
+        var tracedSource = new ActivitySource($"tests.attributes.ref-return.{Guid.NewGuid():N}");
+        using var collector = new ActivityCollector();
+
+        var services = new ServiceCollection();
+        services.AddProjectTracing(options => options.WithActivitySource(tracedSource));
+
+        using var provider = services.BuildServiceProvider();
+        var worker = new RefReturnWorker();
+
+        ref var value = ref worker.GetValue();
+        value.Should().Be(42);
+
+        collector.Started
+            .Where(a => a.Source.Name == tracedSource.Name)
+            .Should()
+            .BeEmpty();
     }
 }
